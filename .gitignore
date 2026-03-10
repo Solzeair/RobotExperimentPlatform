@@ -52,3 +52,24 @@ compile_commands.json
 *creator.user*
 
 *_qmlcache.qrc
+
+# Visual Studio 忽略文件
+.vs/
+*.user
+*.suo
+*.db
+Debug/
+Release/
+x64/
+x86/
+*.tlog
+*.log
+*.idb
+*.pdb
+
+# Qt 自动生成文件
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+uic_*.h
+qtvars.*
