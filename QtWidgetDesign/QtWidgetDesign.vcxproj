@@ -85,8 +85,12 @@
   <ItemGroup>
     <QtRcc Include="QtWidgetDesign.qrc" />
     <QtMoc Include="QtWidgetDesign.h" />
+    <ClCompile Include="CFrameLessWidgetBase.cpp" />
     <ClCompile Include="QtWidgetDesign.cpp" />
     <ClCompile Include="main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <QtMoc Include="CFrameLessWidgetBase.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Condition="Exists('$(QtMsBuild)\qt.targets')">
