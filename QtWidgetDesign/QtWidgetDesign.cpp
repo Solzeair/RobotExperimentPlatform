@@ -1,64 +1,40 @@
-#include "QtWidgetDesign.h"
+Ôªø#include "QtWidgetDesign.h"
 
-QtWidgetDesign::QtWidgetDesign(QWidget *parent)
+QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     : CFrameLessWidgetBase(parent)
 {
-    // –ﬁ∏ƒª˘¿‡µƒ±ÍÃ‚
-    setWindowTitleText("My Software V1.0");
-    this->setMinimumSize(800, 600);
+    this->setMinimumSize(900, 600);
+    // Ë∞ÉÁî®Áà∂Á±ªÁöÑÊñπÊ≥ïËÆæÁΩÆÊ†áÈ¢òÊ†èÊñáÊú¨
+    this->setWindowTitleText("XSYU Football Robot Experimental Platform"); // XSYU Ë∂≥ÁêÉÊú∫Âô®‰∫∫ ÂÆûÈ™åÂπ≥Âè∞
 
-    // ªÒ»°ª˘¿‡µƒ÷––ƒª≠∞Â
-    QWidget* pCenter = this->getCentralWidget();
-    pCenter->setStyleSheet("background-color: #F0F0F0;"); // …Ë÷√ƒ„µƒ÷˜¥∞ø⁄µ◊…´
+    // ÂàõÂª∫ QTabWidget Á±ª‰∏∫‰∏ªÈ°µÈù¢ÂÆπÂô®
+    QTabWidget* myTabWidget = new QTabWidget(this);
+    myTabWidget->setFixedSize(900, 600 - 32);
 
-    // ‘⁄÷––ƒª≠∞Â…œÃÌº”ƒ„µƒ“µŒÒ UI
-    QVBoxLayout* pLay = new QVBoxLayout(pCenter);
-    QLabel* pLabel = new QLabel("’‚¿Ô∑≈÷√ MainWidget µƒæﬂÃÂƒ⁄»›£°", pCenter);
-    pLabel->setAlignment(Qt::AlignCenter);
-    pLay->addWidget(pLabel);
-
-
-
-
-
-    /*
-	tabWidget = new QTabWidget(this);  // ¥¥Ω®∑÷“≥±Í«©»›∆˜
-	tabWidget->setFixedSize(800, 600); // …Ë÷√∑÷“≥±Í«©»›∆˜µƒ¥Û–° // –ﬁ∏ƒ
-
-    tabWidget->setStyleSheet(         // …Ë÷√±Í«©“≥—˘ Ω±Ì£¨◊¢“‚µ•Œªem
+    myTabWidget->setStyleSheet(      
         "QTabBar::tab {"
-        "   height: 2em;"             // …Ë÷√πÃ∂®∏ﬂ∂»
-        "   width: 6em;"              // …Ë÷√πÃ∂®øÌ∂»
-        "   background: transparent;" // «ø÷∆±≥æ∞±£≥÷Õ∏√˜
-        "   border: none;"            // »•µÙø…ƒ‹¥Ê‘⁄µƒ±ﬂøÚ
+        "   height: 2em;"             // ËÆæÁΩÆÈÄªËæëÈ´òÂ∫¶
+        "   width: 6em;"              // ËÆæÁΩÆÈÄªËæëÂÆΩÂ∫¶
+        "   background: transparent;" // Âº∫Âà∂ËÉåÊôØ‰øùÊåÅÈÄèÊòé
+        "   border: none;"            // ÂéªÊéâÂèØËÉΩÂ≠òÂú®ÁöÑËæπÊ°Ü
         "}"
 
-		"QTabBar::tab:selected {"     // —°÷–±Í«©º”…Ó—’…´
+        "QTabBar::tab:selected {"     // ÈÄâ‰∏≠Ê†áÁ≠æÂä†Ê∑±È¢úËâ≤
         "   font-weight: bold;"
         "}"
     );
 
-	tabWidget->addTab(new QWidget(), "Camera"); // …„œÒÕ∑
-	tabWidget->addTab(new QWidget(), "Frequency"); // ∆µ¬ 
-	tabWidget->addTab(new QWidget(), "Demarcate"); // ±Í∂®
-	tabWidget->addTab(new QWidget(), "Color"); // ≤……´
-	tabWidget->addTab(new QWidget(), "competition"); // ±»»¸
-    */
+    // 2. Ê∑ªÂä†Ê†áÁ≠æ  
+    myTabWidget->addTab(new QWidget(), "Camera");      // ÊëÑÂÉèÂ§¥
+    myTabWidget->addTab(new QWidget(), "Frequency");   // È¢ëÁéá
+    myTabWidget->addTab(new QWidget(), "Demarcate");   // Ê†áÂÆö
+    myTabWidget->addTab(new QWidget(), "Color");       // ÈááËâ≤
+    myTabWidget->addTab(new QWidget(), "competition"); // ÊØîËµõ
 
+    // 3. Ê†∏ÂøÉÊúÄÂêé‰∏ÄÊ≠•ÔºöË∞ÉÁî®Âü∫Á±ªÊèê‰æõÁöÑÊé•Âè£ÔºåËÆ©Âü∫Á±ªÊääÂÆÉÂä†Âà∞‰∏ªÁïåÈù¢Â∏ÉÂ±Ä‰∏≠Âéª
+    this->setCentralWidget(myTabWidget);
 }
 
 QtWidgetDesign::~QtWidgetDesign()
-{}
-
-void QtWidgetDesign::closeEvent(QCloseEvent* event)
 {
-    QMessageBox::StandardButton _exit = QMessageBox::warning(this, "tip", "make sure to exit?",
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
-
-    if (_exit == QMessageBox::Yes) {
-        event->accept(); // Õ¨“‚πÿ±’≥Ã–Ú
-    }
-    else {
-        event->ignore(); // ¿πΩÿπÿ±’÷∏¡Ó
-    }
 }

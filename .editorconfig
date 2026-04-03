@@ -1,0 +1,9 @@
+# VS+Qt项目编码规范
+root = true
+
+# 针对C++代码文件
+[*.{cpp,h,hpp,c}]
+charset = utf-8-bom  # 强制UTF-8带BOM，全平台兼容
+end_of_line = crlf   # Windows换行符
+indent_style = space # 空格缩进
+indent_size = 4      # 4格缩进

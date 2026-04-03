@@ -1,14 +1,13 @@
-#pragma once
+ï»¿#pragma once
 
 #include <QtWidgets/QWidget>
-#include "qtabwidget.h"
 #include "CFrameLessWidgetBase.h"
 #include <QVBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
-#include <QCloseEvent>
+#include <QTabWidget>
 
-// Ö÷´°¿Ú¼Ì³ĞÎŞ±ß¿ò»ùÀà
+// ä¸»çª—å£ç»§æ‰¿æ— è¾¹æ¡†åŸºç±»
 class QtWidgetDesign : public CFrameLessWidgetBase
 {
     Q_OBJECT
@@ -17,11 +16,7 @@ public:
     QtWidgetDesign(QWidget *parent = nullptr);
     ~QtWidgetDesign();
 
-protected:
-    // ÖØĞ´¹Ø±ÕÊÂ¼ş£¬ÊµÏÖµ¯´°¶ş´ÎÈ·ÈÏ
-    void closeEvent(QCloseEvent* event) override;
-
 private:
-	QTabWidget* tabWidget; // ·ÖÒ³±êÇ©ÈİÆ÷
+	// Qm_pCentralWidget* m_pCentralWidget; // åˆ†é¡µæ ‡ç­¾å®¹å™¨
 
 };
