@@ -2,6 +2,7 @@
 // 场地几何类的实现文件
 
 #include "FieldGeometry.h"
+#include <algorithm>
 
 using namespace GeometryUtils;
 

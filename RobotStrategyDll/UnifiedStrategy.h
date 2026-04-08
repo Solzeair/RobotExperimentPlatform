@@ -36,7 +36,11 @@ enum class TacticalPhase {
     PHASE_POSSESSION,   // 控球阶段
     PHASE_PRESSURE      // 压迫阶段
 };
-
+enum class StartScenario {
+    SCENARIO_ATTACK,    // 进攻型开局（我方开球、对方弱队）
+    SCENARIO_DEFENSE,   // 防守型开局（对方开球、我方领先、对方强队）
+    SCENARIO_BALANCE    // 平衡型开局
+};
 /**
  * 机器人历史信息结构体
  * 用于记录机器人的历史轨迹，便于预测
@@ -94,6 +98,14 @@ public:
     // ========== 配置接口 ==========
     void setOurGoalOnRight(bool onRight) { m_field.setOurGoalSide(onRight); }
     void setOurKickoff(bool isOurKickoff) { m_isOurKickoff = isOurKickoff; }
+    void setTacticalPhase(TacticalPhase phase) { m_tacticalPhase = phase; }
+    // 应用策略配置
+    void applyStrategyConfig(const StrategyConfig& config);
+
+    // 获取当前战术阶段
+    TacticalPhase getTacticalPhase() const { return m_tacticalPhase; }
+
+    // 设置战术阶段
     void setTacticalPhase(TacticalPhase phase) { m_tacticalPhase = phase; }
 
     // ========== 参数接口 ==========
