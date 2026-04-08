@@ -31,12 +31,12 @@
     <Import Project="$(QtMsBuild)\qt_defaults.props" />
   </ImportGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'" Label="QtSettings">
-    <QtInstall>qt6.10.1</QtInstall>
+    <QtInstall>6.10.1_msvc2022_64</QtInstall>
     <QtModules>core;gui;widgets</QtModules>
     <QtBuildConfig>debug</QtBuildConfig>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'" Label="QtSettings">
-    <QtInstall>qt6.10.1</QtInstall>
+    <QtInstall>6.10.1_msvc2022_64</QtInstall>
     <QtModules>core;gui;widgets</QtModules>
     <QtBuildConfig>release</QtBuildConfig>
   </PropertyGroup>
@@ -85,9 +85,19 @@
   <ItemGroup>
     <QtRcc Include="QtWidgetDesign.qrc" />
     <QtMoc Include="QtWidgetDesign.h" />
+    <QtMoc Include="CameraDlg.h" />
+    <QtMoc Include="RobotDlg.h" />
+    <QtMoc Include="DemarcateDlg.h" />
+    <QtMoc Include="ColorDlg.h" />
+    <QtMoc Include="MatchDlg_5vs5.h" />
     <ClCompile Include="CFrameLessWidgetBase.cpp" />
     <ClCompile Include="QtWidgetDesign.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="CameraDlg.cpp" />
+    <ClCompile Include="RobotDlg.cpp" />
+    <ClCompile Include="DemarcateDlg.cpp" />
+    <ClCompile Include="ColorDlg.cpp" />
+    <ClCompile Include="MatchDlg_5vs5.cpp" />
   </ItemGroup>
   <ItemGroup>
     <QtMoc Include="CFrameLessWidgetBase.h" />
