@@ -1,4 +1,4 @@
-#include "QtWidgetDesign.h"
+﻿#include "QtWidgetDesign.h"
 #include "CameraDlg.h"
 #include "RobotDlg.h"
 #include "DemarcateDlg.h"
@@ -9,6 +9,19 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     : CFrameLessWidgetBase(parent)
 {
     this->setMinimumSize(1200, 800);
+
+    // 将窗口移动到屏幕正中央
+    QScreen* screen = QGuiApplication::primaryScreen();
+    if (screen) {
+        // 获取屏幕的可用几何尺寸（即扣除 Windows 底部任务栏后的实际可用范围）
+        QRect screenRect = screen->availableGeometry();
+        // 计算居中坐标：(屏幕宽高 - 窗口宽高) / 2
+        int x = (screenRect.width() - this->width()) / 2;
+        int y = (screenRect.height() - this->height()) / 2;
+        // 移动窗口到计算出的中心坐标
+        this->move(x, y);
+    }
+
     // 调用父类的方法设置标题栏文本
     this->setWindowTitleText("XSYU Football Robot Experimental Platform"); // XSYU 足球机器人 实验平台
 

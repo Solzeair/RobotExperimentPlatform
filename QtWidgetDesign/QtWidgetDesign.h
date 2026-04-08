@@ -6,6 +6,8 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QTabWidget>
+#include <QScreen>
+#include <QGuiApplication>
 
 // 主窗口继承无边框基类
 class QtWidgetDesign : public CFrameLessWidgetBase
