@@ -4,6 +4,7 @@
 #include "Goalie.h"
 #include "MotionControl.h"
 #include <cmath>
+#include <algorithm>
 
 using namespace GeometryUtils;
 

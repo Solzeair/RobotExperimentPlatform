@@ -597,3 +597,32 @@ bool UnifiedStrategy::saveConfig(const std::string& filename) {
 bool UnifiedStrategy::loadConfig(const std::string& filename) {
     return ParameterTuning::getInstance().loadFromFile(filename);
 }
+void UnifiedStrategy::applyStrategyConfig(const StrategyConfig& config) {
+    // 应用进攻侵略性
+    m_attackAggression = config.attackAggression;
+
+    // 应用防守深度
+    m_defenseDepth = config.defenseDepth;
+
+    // 应用压迫强度
+    m_pressingIntensity = config.pressingIntensity;
+
+    // 应用越位陷阱设置
+    m_useOffsideTrap = config.useOffsideTrap;
+
+    // 应用区域防守设置
+    m_useZonalDefense = config.useZonalDefense;
+
+    // 根据侵略性调整控制参数
+    m_params.kp_pos = 12.0 + (m_attackAggression - 0.6) * 10.0;
+    m_params.kp_angle = 22.0 + (m_attackAggression - 0.6) * 15.0;
+    m_params.max_speed = 75.0 + (m_attackAggression - 0.6) * 25.0;
+
+    // 限制参数范围
+    if (m_params.kp_pos < 8.0) m_params.kp_pos = 8.0;
+    if (m_params.kp_pos > 25.0) m_params.kp_pos = 25.0;
+    if (m_params.kp_angle < 15.0) m_params.kp_angle = 15.0;
+    if (m_params.kp_angle > 40.0) m_params.kp_angle = 40.0;
+    if (m_params.max_speed < 60.0) m_params.max_speed = 60.0;
+    if (m_params.max_speed > 100.0) m_params.max_speed = 100.0;
+}

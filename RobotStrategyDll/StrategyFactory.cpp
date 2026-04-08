@@ -102,3 +102,44 @@ StrategyBase* createStrategy(StrategyType type) {
 void destroyStrategy(StrategyBase* strategy) {
     DestroyStrategy(strategy);
 }
+// ========== 策略初始化接口 ==========
+ROBOTSTRATEGYDLL_EXPORT void __cdecl InitializeStrategy(void* strategy,
+    int ourScore, int oppScore,
+    int remainingTime,
+    int isFirstHalf,
+    int isOurKickoff) {
+    if (!strategy) return;
+
+    MatchContext context;
+    context.ourScore = ourScore;
+    context.oppScore = oppScore;
+    context.remainingTime = remainingTime;
+    context.isFirstHalf = (isFirstHalf != 0);
+    context.isOurKickoff = (isOurKickoff != 0);
+    context.ourRobotsCount = 5;
+    context.oppRobotsCount = 5;
+
+    StrategyInitializer::initializeStrategy(static_cast<UnifiedStrategy*>(strategy), context);
+}
+
+// 获取当前策略模式
+ROBOTSTRATEGYDLL_EXPORT int __cdecl GetCurrentStrategyMode(void* strategy) {
+    (void)strategy;
+    return static_cast<int>(StrategySelector::getInstance().getCurrentConfig().mode);
+}
+
+// 动态切换策略（注意：比赛开始后调用可能无效）
+ROBOTSTRATEGYDLL_EXPORT void __cdecl SetStrategyMode(void* strategy, int mode) {
+    if (!strategy) return;
+
+    StrategySelector& selector = StrategySelector::getInstance();
+
+    // 如果已锁定，不能切换
+    if (selector.isLocked()) {
+        std::cout << "Strategy is locked, cannot switch mode!" << std::endl;
+        return;
+    }
+
+    StrategyConfig config = selector.generateConfig(static_cast<StrategyMode>(mode));
+    selector.applyConfig(static_cast<UnifiedStrategy*>(strategy), config);
+}
