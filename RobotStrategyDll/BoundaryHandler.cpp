@@ -3,6 +3,7 @@
 
 #include "BoundaryHandler.h"
 #include "MotionControl.h"
+#include <algorithm>
 
 using namespace GeometryUtils;
 
