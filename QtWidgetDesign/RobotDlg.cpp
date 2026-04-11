@@ -1,3 +1,9 @@
+﻿/*
+* 调车对话框源文件
+* 写作人 李青
+* 功能 调车面板的构建与基础交互响应，含车体位置标识显示、指令下发遥测操作等功能模块实现。
+* 未完成
+*/
 #include "RobotDlg.h"
 
 RobotDlg::RobotDlg(QWidget *parent)

@@ -21,6 +21,12 @@ CFrameLessWidgetBase::~CFrameLessWidgetBase()
 {
 }
 
+/*
+* 自定义无边框窗口UI设计初始化函数
+* 写作人 马浩宇 
+* 功能：自定义标题栏、窗口控制按钮、拖拽和边缘缩放
+* 已完成 / 正在开发中 / 拖拽功能有问题 / 仅作测试后续可删除 / 后续可抽象成工具类提供给其他项目使用
+*/
 void CFrameLessWidgetBase::initBaseUI()
 {
     // 1. 标题栏

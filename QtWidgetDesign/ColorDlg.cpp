@@ -1,7 +1,4 @@
-#include "ColorDlg.h"
-#include <QPainter>
-#include <QColor>
-#include <cmath>
+﻿#include "ColorDlg.h"
 
 ColorDlg::ColorDlg(QWidget *parent)
     : QWidget(parent)

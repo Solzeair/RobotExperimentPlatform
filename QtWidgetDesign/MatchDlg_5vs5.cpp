@@ -1,3 +1,9 @@
+﻿/*
+* 5v5比赛对话框源文件
+* 写作人 李青
+* 功能 5v5比赛控制界面逻辑实现，包含开球类型、阵型布置、点球及战术选择功能响应。
+* 未完成
+*/
 #include "MatchDlg_5vs5.h"
 
 MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)

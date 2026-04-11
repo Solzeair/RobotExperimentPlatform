@@ -32,9 +32,6 @@
     <QtMoc Include="CameraDlg.h">
       <Filter>Header Files</Filter>
     </QtMoc>
-    <QtMoc Include="RobotDlg.h">
-      <Filter>Header Files</Filter>
-    </QtMoc>
     <QtMoc Include="DemarcateDlg.h">
       <Filter>Header Files</Filter>
     </QtMoc>
@@ -73,6 +70,9 @@
   </ItemGroup>
   <ItemGroup>
     <QtMoc Include="CFrameLessWidgetBase.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <QtMoc Include="RobotDlg.h">
       <Filter>Header Files</Filter>
     </QtMoc>
   </ItemGroup>

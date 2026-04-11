@@ -1,7 +1,10 @@
+﻿/*
+* 场地标定对话框源文件
+* 写作人 李青
+* 功能 标定界面逻辑实现，包含加载/保存场地参数、坐标撤销与标定结果确认操作
+* 未完成
+*/
 #include "DemarcateDlg.h"
-#include <QThread>
-#include <QCoreApplication>
-#include <QMessageBox>
 
 DemarcateDlg::DemarcateDlg(QWidget *parent)
     : QWidget(parent)

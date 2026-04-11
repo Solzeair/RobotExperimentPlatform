@@ -1,5 +1,11 @@
+﻿/*
+* 摄像头调整对话框文件
+* 写作人 李青
+* 功能 摄像头调整界面设计，包含亮度、增益、对比度、快门、红色、绿色、蓝色等参数的滑块和输入框，以及保存按钮。
+* 已完成 / 未完成
+*/
+
 #include "CameraDlg.h"
-#include <QMessageBox>
 
 CameraDlg::CameraDlg(QWidget *parent)
     : QWidget(parent)
