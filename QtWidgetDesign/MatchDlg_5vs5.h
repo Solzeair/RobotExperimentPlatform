@@ -74,4 +74,6 @@ private:
     int m_exchangerobot1;                   // 用于角色替换的主力车号参数
     int m_exchangerobot2;                   // 用于角色替换的替补车号参数
     int m_dan;                              // 当前采取的后卫阵型(单双)值
+
+    int StrategyNum;                        // 当前选定的战术策略索引
 };
