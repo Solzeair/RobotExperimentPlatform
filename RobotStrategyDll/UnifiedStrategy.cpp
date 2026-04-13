@@ -3,7 +3,6 @@
 #include "MotionControl.h"
 #include "Goalie.h"
 #include "Formation.h"
-#include "Formation.h"
 #include "ParameterTuning.h"
 #include <algorithm>
 #include <cmath>
@@ -137,11 +136,14 @@ void UnifiedStrategy::formInterpret(int formationNo, const BallInfo& ball) {
 
     if (formationNo == 100) {
         roles = Formation::getBoundaryFormation(ball, m_field);
-    } else if (formationNo == 101) {
+    }
+    else if (formationNo == 101) {
         roles = Formation::getCornerFormation(ball, m_field);
-    } else if (formationNo >= 1 && formationNo <= 32) {
+    }
+    else if (formationNo >= 1 && formationNo <= 32) {
         roles = Formation::getFormation(formationNo, ball, m_field);
-    } else {
+    }
+    else {
         roles = Formation::getFormation(1, ball, m_field);
     }
 
@@ -154,71 +156,72 @@ void UnifiedStrategy::formInterpret(int formationNo, const BallInfo& ball) {
     }
 }
 
-    // 原MFC的 charAllot() 函数 - 使用匈牙利算法分配角色
+// 原MFC的 charAllot() 函数 - 使用匈牙利算法分配角色
 
-    void UnifiedStrategy::charAllot(const RobotPose robots[], int robotCount) {
-        int n = std::min(robotCount, 5);
-        int m = std::min((int)m_roles.size(), 5);
+void UnifiedStrategy::charAllot(const RobotPose robots[], int robotCount) {
+    int n = std::min(robotCount, 5);
+    int m = std::min((int)m_roles.size(), 5);
 
-        if (n == 0 || m == 0) return;
- // 构建成本矩阵（距离越远成本越高）
-        double costMatrix[5][5];
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < m; j++) {
-                Point target = m_roles[j].targetPos;
-                double dist = pointToPointDistance(robots[i], target);
-// 守门员角色：距离权重加倍
-                if (m_roles[j].roleId == ROLE_GOALIE) {
-                    dist *= 0.5;
-                } // 射门角色：考虑与球门的距离
-                else if (m_roles[j].roleId == ROLE_SHOOT) {
-                    double goalDist = pointToPointDistance(robots[i], m_field.getOppGoalPos());
-                    dist += goalDist * 0.3;
-                }
+    if (n == 0 || m == 0) return;
+    // 构建成本矩阵（距离越远成本越高）
+    double costMatrix[5][5];
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < m; j++) {
+            Point target = m_roles[j].targetPos;
+            double dist = pointToPointDistance(robots[i], target);
+            // 守门员角色：距离权重加倍
+            if (m_roles[j].roleId == ROLE_GOALIE) {
+                dist *= 0.5;
+            } // 射门角色：考虑与球门的距离
+            else if (m_roles[j].roleId == ROLE_SHOOT) {
+                double goalDist = pointToPointDistance(robots[i], m_field.getOppGoalPos());
+                dist += goalDist * 0.3;
+            }
 
-                costMatrix[i][j] = dist;
-            }
-        }
-    // 匈牙利算法求解最优分配
-        int assignment[5];
-        hungarianAlgorithm(costMatrix, assignment);
-    // 应用分配结果
-        for (int i = 0; i < n; i++) {
-            if (assignment[i] >= 0 && assignment[i] < m) {
-                m_assignedRoles[i] = m_roles[assignment[i]].roleId;
-            } else {
-                m_assignedRoles[i] = ROLE_WAIT_CENTER;
-            }
-        }
-    // 确保有守门员
-        bool hasGoalie = false;
-        for (int i = 0; i < n; i++) {
-            if (m_assignedRoles[i] == ROLE_GOALIE) {
-                hasGoalie = true;
-                break;
-            }
-        }
-  // 如果没有守门员，将离球门最近的机器人设为守门员
-        if (!hasGoalie && n > 0) {
-            int goalieIdx = 0;
-            double minDist = 1e9;
-            Point goalPos = m_field.getOurGoalPos();
-            for (int i = 0; i < n; i++) {
-                double dist = pointToPointDistance(robots[i], goalPos);
-                if (dist < minDist) {
-                    minDist = dist;
-                    goalieIdx = i;
-                }
-            }
-            m_assignedRoles[goalieIdx] = ROLE_GOALIE;
+            costMatrix[i][j] = dist;
         }
     }
-    /**
- * 匈牙利算法
- * 用于求解二分图最小权匹配问题
- * @param costMatrix 成本矩阵（5x5）
- * @param assignment 输出分配数组
- */
+    // 匈牙利算法求解最优分配
+    int assignment[5];
+    hungarianAlgorithm(costMatrix, assignment);
+    // 应用分配结果
+    for (int i = 0; i < n; i++) {
+        if (assignment[i] >= 0 && assignment[i] < m) {
+            m_assignedRoles[i] = m_roles[assignment[i]].roleId;
+        }
+        else {
+            m_assignedRoles[i] = ROLE_WAIT_CENTER;
+        }
+    }
+    // 确保有守门员
+    bool hasGoalie = false;
+    for (int i = 0; i < n; i++) {
+        if (m_assignedRoles[i] == ROLE_GOALIE) {
+            hasGoalie = true;
+            break;
+        }
+    }
+    // 如果没有守门员，将离球门最近的机器人设为守门员
+    if (!hasGoalie && n > 0) {
+        int goalieIdx = 0;
+        double minDist = 1e9;
+        Point goalPos = m_field.getOurGoalPos();
+        for (int i = 0; i < n; i++) {
+            double dist = pointToPointDistance(robots[i], goalPos);
+            if (dist < minDist) {
+                minDist = dist;
+                goalieIdx = i;
+            }
+        }
+        m_assignedRoles[goalieIdx] = ROLE_GOALIE;
+    }
+}
+/**
+* 匈牙利算法
+* 用于求解二分图最小权匹配问题
+* @param costMatrix 成本矩阵（5x5）
+* @param assignment 输出分配数组
+*/
 void UnifiedStrategy::hungarianAlgorithm(double costMatrix[5][5], int assignment[5]) {
     // 匈牙利算法实现（修复数组越界问题）
     int n = 5;
@@ -228,9 +231,9 @@ void UnifiedStrategy::hungarianAlgorithm(double costMatrix[5][5], int assignment
         assignment[i] = -1;
     }
 
-    double u[5] = {0}, v[5] = {0};
-    int p[6] = {0};  // 改为6，避免越界（索引1-5）
-    int way[6] = {0};
+    double u[5] = { 0 }, v[5] = { 0 };
+    int p[6] = { 0 };  // 改为6，避免越界（索引1-5）
+    int way[6] = { 0 };
 
     for (int i = 1; i <= n; i++) {
         p[0] = i;
@@ -239,7 +242,7 @@ void UnifiedStrategy::hungarianAlgorithm(double costMatrix[5][5], int assignment
         for (int j = 1; j <= n; j++) {
             minv[j] = 1e9;
         }
-        bool used[6] = {false};  // 改为6
+        bool used[6] = { false };  // 改为6
 
         do {
             used[j0] = true;
@@ -249,7 +252,7 @@ void UnifiedStrategy::hungarianAlgorithm(double costMatrix[5][5], int assignment
 
             for (int j = 1; j <= n; j++) {
                 if (!used[j]) {
-                    double cur = costMatrix[i0-1][j-1] - u[i0-1] - v[j-1];
+                    double cur = costMatrix[i0 - 1][j - 1] - u[i0 - 1] - v[j - 1];
                     if (cur < minv[j]) {
                         minv[j] = cur;
                         way[j] = j0;
@@ -263,9 +266,10 @@ void UnifiedStrategy::hungarianAlgorithm(double costMatrix[5][5], int assignment
 
             for (int j = 0; j <= n; j++) {
                 if (used[j]) {
-                    u[p[j]-1] += delta;
-                    if (j > 0) v[j-1] -= delta;
-                } else {
+                    u[p[j] - 1] += delta;
+                    if (j > 0) v[j - 1] -= delta;
+                }
+                else {
                     minv[j] -= delta;
                 }
             }
@@ -281,13 +285,13 @@ void UnifiedStrategy::hungarianAlgorithm(double costMatrix[5][5], int assignment
 
     for (int j = 1; j <= n; j++) {
         if (p[j] != 0) {
-            assignment[p[j]-1] = j-1;
+            assignment[p[j] - 1] = j - 1;
         }
     }
 }
 
 void UnifiedStrategy::robotManager(const RobotPose robots[], const Point oppRobots[],
-                                   const BallInfo& ball, WheelVelocity velocities[]) {
+    const BallInfo& ball, WheelVelocity velocities[]) {
     // 原MFC的 robotManager() 函数
     // 管理机器人状态，处理异常情况
 
@@ -319,7 +323,7 @@ void UnifiedStrategy::robotManager(const RobotPose robots[], const Point oppRobo
 }
 
 void UnifiedStrategy::actProcess(const RobotPose robots[], const Point oppRobots[],
-                                 const BallInfo& ball, WheelVelocity velocities[]) {
+    const BallInfo& ball, WheelVelocity velocities[]) {
     // 原MFC的 actProcess() 函数
     // 执行每个机器人的动作
 
@@ -355,7 +359,7 @@ void UnifiedStrategy::actProcess(const RobotPose robots[], const Point oppRobots
 
         // 应用避障
         Point avoidTarget = MotionControl::smoothAvoidObstacles(robots[i], target,
-                                                                allObstacles, obsCount, nullptr);
+            allObstacles, obsCount, nullptr);
 
         // 传球决策
         if (shouldPass(robots[i], ball) && roleId != ROLE_SHOOT) {
@@ -368,20 +372,20 @@ void UnifiedStrategy::actProcess(const RobotPose robots[], const Point oppRobots
 
         // 执行角色动作
         RoleTable::executeRole(roleId, robots[i], ball, oppRobots, 5,
-                               m_field, m_params, velocities[i]);
+            m_field, m_params, velocities[i]);
     }
     // 在函数末尾添加调试输出
     std::cout << "actProcess: velocities calculated" << std::endl;
     for (int i = 0; i < 5; i++) {
         std::cout << "  Robot " << i << ": L=" << velocities[i].left
-                  << ", R=" << velocities[i].right << std::endl;
+            << ", R=" << velocities[i].right << std::endl;
     }
 }
 
 // ==================== 主决策函数 ====================
 void UnifiedStrategy::decide(const RobotPose robots[], const Point oppRobots[],
-                             const BallInfo& ball, WheelVelocity velocities[]) {
-        std::cout << "decide called, frame: " << m_frameCount << std::endl;
+    const BallInfo& ball, WheelVelocity velocities[]) {
+    std::cout << "decide called, frame: " << m_frameCount << std::endl;
     m_frameCount++;
 
     // 1. 信息预处理（原MFC preProcess）
@@ -435,15 +439,19 @@ void UnifiedStrategy::updateTacticalPhase(const BallInfo& ball) {
     if (m_field.isInOppHalf(ball.pos)) {
         if (ball.velocity > 30 && ball.vel_x > 0) {
             m_tacticalPhase = TacticalPhase::PHASE_ATTACK;
-        } else {
+        }
+        else {
             m_tacticalPhase = TacticalPhase::PHASE_PRESSURE;
         }
-    } else if (m_field.isInOurHalf(ball.pos)) {
+    }
+    else if (m_field.isInOurHalf(ball.pos)) {
         if (ball.velocity > 25 && ball.vel_x > 0) {
             m_tacticalPhase = TacticalPhase::PHASE_COUNTER;
-        } else if (ball.pos.x < 40) {
+        }
+        else if (ball.pos.x < 40) {
             m_tacticalPhase = TacticalPhase::PHASE_DEFENSE;
-        } else {
+        }
+        else {
             m_tacticalPhase = TacticalPhase::PHASE_POSSESSION;
         }
     }
@@ -460,7 +468,7 @@ bool UnifiedStrategy::isInAttackState(const BallInfo& ball) {
     }
 
     return m_tacticalPhase == TacticalPhase::PHASE_ATTACK ||
-           m_tacticalPhase == TacticalPhase::PHASE_COUNTER;
+        m_tacticalPhase == TacticalPhase::PHASE_COUNTER;
 }
 
 bool UnifiedStrategy::isInDefenseState(const BallInfo& ball) {
@@ -480,15 +488,15 @@ bool UnifiedStrategy::isInDefenseState(const BallInfo& ball) {
 bool UnifiedStrategy::isNearBoundary(const Point& pos) {
     double margin = 12.0;
     return (pos.x < margin || pos.x > m_field.getFieldWidth() - margin ||
-            pos.y < margin || pos.y > m_field.getFieldHeight() - margin);
+        pos.y < margin || pos.y > m_field.getFieldHeight() - margin);
 }
 
 bool UnifiedStrategy::isCornerSituation(const Point& pos) {
     double margin = 15.0;
     return (pos.x < margin && pos.y < margin) ||
-           (pos.x < margin && pos.y > m_field.getFieldHeight() - margin) ||
-           (pos.x > m_field.getFieldWidth() - margin && pos.y < margin) ||
-           (pos.x > m_field.getFieldWidth() - margin && pos.y > m_field.getFieldHeight() - margin);
+        (pos.x < margin && pos.y > m_field.getFieldHeight() - margin) ||
+        (pos.x > m_field.getFieldWidth() - margin && pos.y < margin) ||
+        (pos.x > m_field.getFieldWidth() - margin && pos.y > m_field.getFieldHeight() - margin);
 }
 
 bool UnifiedStrategy::shouldPass(const RobotPose& robot, const BallInfo& ball) {
@@ -497,8 +505,8 @@ bool UnifiedStrategy::shouldPass(const RobotPose& robot, const BallInfo& ball) {
 }
 
 PassOption UnifiedStrategy::evaluatePassOptions(const RobotPose& passer, const BallInfo& ball,
-                                                const RobotPose receivers[], int receiverCount,
-                                                const Point opponents[], int opponentCount) {
+    const RobotPose receivers[], int receiverCount,
+    const Point opponents[], int opponentCount) {
     // 转换 opponents 为 RobotPose 数组
     RobotPose oppPoses[5];
     for (int i = 0; i < opponentCount && i < 5; i++) {
@@ -519,7 +527,8 @@ double UnifiedStrategy::calculatePerformanceScore(const RobotPose& robot, const 
 
     if (role.roleId == ROLE_GOALIE) {
         score -= dist * 0.2;
-    } else if (role.roleId == ROLE_SHOOT) {
+    }
+    else if (role.roleId == ROLE_SHOOT) {
         double goalDist = pointToPointDistance(robot, m_field.getOppGoalPos());
         score -= goalDist * 0.05;
     }
@@ -554,21 +563,29 @@ void UnifiedStrategy::reset() {
 void UnifiedStrategy::setParameter(const std::string& key, double value) {
     if (key == "max_speed") {
         m_params.max_speed = value;
-    } else if (key == "kp_pos") {
+    }
+    else if (key == "kp_pos") {
         m_params.kp_pos = value;
-    } else if (key == "kp_angle") {
+    }
+    else if (key == "kp_angle") {
         m_params.kp_angle = value;
-    } else if (key == "attack_aggression") {
+    }
+    else if (key == "attack_aggression") {
         m_attackAggression = value;
-    } else if (key == "defense_depth") {
+    }
+    else if (key == "defense_depth") {
         m_defenseDepth = value;
-    } else if (key == "pressing_intensity") {
+    }
+    else if (key == "pressing_intensity") {
         m_pressingIntensity = value;
-    } else if (key == "our_goal_right") {
+    }
+    else if (key == "our_goal_right") {
         m_field.setOurGoalSide(value > 0);
-    } else if (key == "use_offside_trap") {
+    }
+    else if (key == "use_offside_trap") {
         m_useOffsideTrap = value > 0;
-    } else if (key == "use_zonal_defense") {
+    }
+    else if (key == "use_zonal_defense") {
         m_useZonalDefense = value > 0;
     }
 
@@ -579,7 +596,17 @@ void UnifiedStrategy::setParameter(const std::string& key, double value) {
 void UnifiedStrategy::setControlParam(const std::string& key, double value) {
     setParameter(key, value);
 }
-
+double UnifiedStrategy::getParameter(const std::string& key) const {
+    if (key == "max_speed") return m_params.max_speed;
+    if (key == "kp_pos") return m_params.kp_pos;
+    if (key == "kp_angle") return m_params.kp_angle;
+    if (key == "attack_aggression") return m_attackAggression;
+    if (key == "defense_depth") return m_defenseDepth;
+    if (key == "pressing_intensity") return m_pressingIntensity;
+    if (key == "use_offside_trap") return m_useOffsideTrap ? 1.0 : 0.0;
+    if (key == "use_zonal_defense") return m_useZonalDefense ? 1.0 : 0.0;
+    return 0.0;
+}
 double UnifiedStrategy::getControlParam(const std::string& key) const {
     if (key == "max_speed") return m_params.max_speed;
     if (key == "kp_pos") return m_params.kp_pos;
