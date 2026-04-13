@@ -1,8 +1,16 @@
-#pragma once
+﻿#pragma once
 
 #include <QtWidgets/QWidget>
+#include "CFrameLessWidgetBase.h"
+#include <QVBoxLayout>
+#include <QLabel>
+#include <QMessageBox>
+#include <QTabWidget>
+#include <QScreen>
+#include <QGuiApplication>
 
-class QtWidgetDesign : public QWidget
+// 主窗口继承无边框基类
+class QtWidgetDesign : public CFrameLessWidgetBase
 {
     Q_OBJECT
 
@@ -11,4 +19,6 @@ public:
     ~QtWidgetDesign();
 
 private:
+	// Qm_pCentralWidget* m_pCentralWidget; // 分页标签容器
+
 };

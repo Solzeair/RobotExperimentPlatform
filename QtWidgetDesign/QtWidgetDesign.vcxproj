@@ -85,8 +85,22 @@
   <ItemGroup>
     <QtRcc Include="QtWidgetDesign.qrc" />
     <QtMoc Include="QtWidgetDesign.h" />
+    <QtMoc Include="CameraDlg.h" />
+    <QtMoc Include="RobotDlg.h" />
+    <QtMoc Include="DemarcateDlg.h" />
+    <QtMoc Include="ColorDlg.h" />
+    <QtMoc Include="MatchDlg_5vs5.h" />
+    <ClCompile Include="CFrameLessWidgetBase.cpp" />
     <ClCompile Include="QtWidgetDesign.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="CameraDlg.cpp" />
+    <ClCompile Include="RobotDlg.cpp" />
+    <ClCompile Include="DemarcateDlg.cpp" />
+    <ClCompile Include="ColorDlg.cpp" />
+    <ClCompile Include="MatchDlg_5vs5.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <QtMoc Include="CFrameLessWidgetBase.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Condition="Exists('$(QtMsBuild)\qt.targets')">
