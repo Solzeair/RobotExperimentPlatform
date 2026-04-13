@@ -12,36 +12,7 @@
 #include <vector>
 #include <deque>
 #include <string>
-/**
- * 策略配置结构体
- * 用于统一管理策略参数
- */
-struct StrategyConfig {
-    double attackAggression;      // 进攻侵略性 (0-1)
-    double defenseDepth;          // 防守深度 (0-1)
-    double pressingIntensity;     // 压迫强度 (0-1)
-    bool useOffsideTrap;          // 是否使用越位陷阱
-    bool useZonalDefense;         // 是否使用区域防守
 
-    // 构造函数
-    StrategyConfig()
-        : attackAggression(0.6)
-        , defenseDepth(0.5)
-        , pressingIntensity(0.5)
-        , useOffsideTrap(false)
-        , useZonalDefense(true) {
-    }
-
-    // 带参数的构造函数
-    StrategyConfig(double attack, double defense, double pressing,
-        bool offsideTrap = false, bool zonalDefense = true)
-        : attackAggression(attack)
-        , defenseDepth(defense)
-        , pressingIntensity(pressing)
-        , useOffsideTrap(offsideTrap)
-        , useZonalDefense(zonalDefense) {
-    }
-};
 /**
  * 比赛状态枚举
  */
@@ -119,7 +90,7 @@ public:
 
     // ========== StrategyBase接口实现 ==========
     void decide(const RobotPose robots[], const Point oppRobots[],
-        const BallInfo& ball, WheelVelocity velocities[]) override;
+                const BallInfo& ball, WheelVelocity velocities[]) override;
     void reset() override;
     void setParameter(const std::string& key, double value) override;
     std::string getStrategyName() const override { return "Unified MFC Strategy"; }
@@ -182,14 +153,14 @@ private:
      * 处理机器人异常情况（卡边界、碰撞等）
      */
     void robotManager(const RobotPose robots[], const Point oppRobots[],
-        const BallInfo& ball, WheelVelocity velocities[]);
+                      const BallInfo& ball, WheelVelocity velocities[]);
 
     /**
      * 动作执行（原MFC actProcess）
      * 执行每个机器人的角色动作
      */
     void actProcess(const RobotPose robots[], const Point oppRobots[],
-        const BallInfo& ball, WheelVelocity velocities[]);
+                    const BallInfo& ball, WheelVelocity velocities[]);
 
     // ========== 辅助函数 ==========
     void updateMatchState(const BallInfo& ball);      // 更新比赛状态
@@ -202,8 +173,8 @@ private:
 
     bool shouldPass(const RobotPose& robot, const BallInfo& ball);  // 是否应该传球
     PassOption evaluatePassOptions(const RobotPose& passer, const BallInfo& ball,
-        const RobotPose receivers[], int receiverCount,
-        const Point opponents[], int opponentCount);  // 评估传球
+                                   const RobotPose receivers[], int receiverCount,
+                                   const Point opponents[], int opponentCount);  // 评估传球
     Point getDynamicTarget(const Role& role, const BallInfo& ball);  // 获取动态目标点
 
     // 匈牙利算法（用于角色分配）
