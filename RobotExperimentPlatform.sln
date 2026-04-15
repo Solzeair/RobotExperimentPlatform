@@ -1,11 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36908.2
+# Visual Studio Version 18
+VisualStudioVersion = 18.3.11527.330 d18.3
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "QtWidgetDesign", "QtWidgetDesign\QtWidgetDesign.vcxproj", "{D4DD4149-3511-411E-89BF-596B2A551F43}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ParameterDialog", "ParameterDialog\ParameterDialog.vcxproj", "{5B799532-6F09-499E-B0B8-FFD755465E1D}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestRobotStrategy", "..\TestRobotStrategy\TestRobotStrategy.vcxproj", "{3A7512B9-2178-3027-BBA8-283908B3A939}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RobotStrategyDll", "..\RobotStrategyDll\RobotStrategyDll.vcxproj", "{6C79CE72-D1A5-3301-B0EE-8A7118EDBE37}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +25,14 @@ Global
 		{5B799532-6F09-499E-B0B8-FFD755465E1D}.Debug|x64.Build.0 = Debug|x64
 		{5B799532-6F09-499E-B0B8-FFD755465E1D}.Release|x64.ActiveCfg = Release|x64
 		{5B799532-6F09-499E-B0B8-FFD755465E1D}.Release|x64.Build.0 = Release|x64
+		{3A7512B9-2178-3027-BBA8-283908B3A939}.Debug|x64.ActiveCfg = Debug|x64
+		{3A7512B9-2178-3027-BBA8-283908B3A939}.Debug|x64.Build.0 = Debug|x64
+		{3A7512B9-2178-3027-BBA8-283908B3A939}.Release|x64.ActiveCfg = Release|x64
+		{3A7512B9-2178-3027-BBA8-283908B3A939}.Release|x64.Build.0 = Release|x64
+		{6C79CE72-D1A5-3301-B0EE-8A7118EDBE37}.Debug|x64.ActiveCfg = Debug|x64
+		{6C79CE72-D1A5-3301-B0EE-8A7118EDBE37}.Debug|x64.Build.0 = Debug|x64
+		{6C79CE72-D1A5-3301-B0EE-8A7118EDBE37}.Release|x64.ActiveCfg = Release|x64
+		{6C79CE72-D1A5-3301-B0EE-8A7118EDBE37}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
