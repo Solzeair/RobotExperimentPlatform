@@ -1,7 +1,0 @@
-<Solution>
-  <Configurations>
-    <Platform Name="x64" />
-  </Configurations>
-  <Project Path="../RobotStrategyDll/RobotStrategyDll.vcxproj" Id="6c79ce72-d1a5-3301-b0ee-8a7118edbe37" />
-  <Project Path="../TestRobotStrategy/TestRobotStrategy.vcxproj" Id="3a7512b9-2178-3027-bba8-283908b3a939" />
-</Solution>
