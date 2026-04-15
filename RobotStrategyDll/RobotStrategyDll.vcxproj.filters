@@ -85,12 +85,6 @@
     <ClCompile Include="robotstrategydll.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="StrategySelector.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="StrategyInitializer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AreaDivider.h">
@@ -157,12 +151,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="robotstrategydll_global.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="StrategySelector.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="StrategyInitializer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

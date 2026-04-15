@@ -2,6 +2,8 @@
   <Configurations>
     <Platform Name="x64" />
   </Configurations>
+  <Project Path="../../source/repos/RobotExperimentPlatform/ParameterDialog/ParameterDialog.vcxproj" Id="5b799532-6f09-499e-b0b8-ffd755465e1d" />
+  <Project Path="../../source/repos/RobotExperimentPlatform/QtWidgetDesign/QtWidgetDesign.vcxproj" Id="d4dd4149-3511-411e-89bf-596b2a551f43" />
   <Project Path="../RobotStrategyDll/RobotStrategyDll.vcxproj" Id="6c79ce72-d1a5-3301-b0ee-8a7118edbe37" />
   <Project Path="../TestRobotStrategy/TestRobotStrategy.vcxproj" Id="3a7512b9-2178-3027-bba8-283908b3a939" />
 </Solution>

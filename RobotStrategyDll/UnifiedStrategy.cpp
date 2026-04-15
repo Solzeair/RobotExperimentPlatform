@@ -579,7 +579,17 @@ void UnifiedStrategy::setParameter(const std::string& key, double value) {
 void UnifiedStrategy::setControlParam(const std::string& key, double value) {
     setParameter(key, value);
 }
-
+double UnifiedStrategy::getParameter(const std::string& key) const {
+    if (key == "max_speed") return m_params.max_speed;
+    if (key == "kp_pos") return m_params.kp_pos;
+    if (key == "kp_angle") return m_params.kp_angle;
+    if (key == "attack_aggression") return m_attackAggression;
+    if (key == "defense_depth") return m_defenseDepth;
+    if (key == "pressing_intensity") return m_pressingIntensity;
+    if (key == "use_offside_trap") return m_useOffsideTrap ? 1.0 : 0.0;
+    if (key == "use_zonal_defense") return m_useZonalDefense ? 1.0 : 0.0;
+    return 0.0;
+}
 double UnifiedStrategy::getControlParam(const std::string& key) const {
     if (key == "max_speed") return m_params.max_speed;
     if (key == "kp_pos") return m_params.kp_pos;

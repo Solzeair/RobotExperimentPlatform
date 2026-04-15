@@ -12,7 +12,36 @@
 #include <vector>
 #include <deque>
 #include <string>
+/**
+ * 策略配置结构体
+ * 用于统一管理策略参数
+ */
+struct StrategyConfig {
+    double attackAggression;      // 进攻侵略性 (0-1)
+    double defenseDepth;          // 防守深度 (0-1)
+    double pressingIntensity;     // 压迫强度 (0-1)
+    bool useOffsideTrap;          // 是否使用越位陷阱
+    bool useZonalDefense;         // 是否使用区域防守
 
+    // 构造函数
+    StrategyConfig()
+        : attackAggression(0.6)
+        , defenseDepth(0.5)
+        , pressingIntensity(0.5)
+        , useOffsideTrap(false)
+        , useZonalDefense(true) {
+    }
+
+    // 带参数的构造函数
+    StrategyConfig(double attack, double defense, double pressing,
+        bool offsideTrap = false, bool zonalDefense = true)
+        : attackAggression(attack)
+        , defenseDepth(defense)
+        , pressingIntensity(pressing)
+        , useOffsideTrap(offsideTrap)
+        , useZonalDefense(zonalDefense) {
+    }
+};
 /**
  * 比赛状态枚举
  */
