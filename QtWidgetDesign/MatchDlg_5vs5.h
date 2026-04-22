@@ -1,4 +1,4 @@
-﻿/*
+/*
 * 5v5比赛对话框头文件
 * 写作人 李青
 * 功能 5v5比赛控制面板的类，包含各种比赛规则单选框、策略选择和比赛状态控制方法。
@@ -16,6 +16,8 @@
 #include <QComboBox>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <QTimer>
+#include <QElapsedTimer>
 
 class MatchDlg_5vs5 : public QWidget
 {
@@ -76,4 +78,6 @@ private:
     int m_dan;                              // 当前采取的后卫阵型(单双)值
 
     int StrategyNum;                        // 当前选定的战术策略索引
+    
+
 };

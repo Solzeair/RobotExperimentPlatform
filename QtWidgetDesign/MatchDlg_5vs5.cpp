@@ -1,4 +1,4 @@
-﻿/*
+/*
 * 5v5比赛对话框源文件
 * 写作人 李青
 * 功能 5v5比赛控制界面逻辑实现，包含开球类型、阵型布置、点球及战术选择功能响应。
@@ -41,26 +41,14 @@ void MatchDlg_5vs5::initUI()
     mainLayout->setContentsMargins(10, 10, 10, 10);
     mainLayout->setSpacing(10);
     
-    // 标题 "比赛"
-    QLabel *titleLabel = new QLabel("比赛", this);
-    titleLabel->setFont(font);
-    mainLayout->addWidget(titleLabel);
-    
-    // 创建顶部布局（左侧显示区域 + 右侧控制区域）
-    QHBoxLayout *topLayout = new QHBoxLayout();
-    topLayout->setSpacing(20);
-    
-    // 左侧显示区域
-    QLabel *displayLabel = new QLabel("比赛状态显示区域", this);
-    displayLabel->setStyleSheet("QLabel { background-color: #333333; border: 1px solid black; color: white; }");
-    displayLabel->setFont(font);
-    displayLabel->setAlignment(Qt::AlignCenter);
-    displayLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    topLayout->addWidget(displayLabel);
-    
-    // 右侧控制区域
+    // 创建主控制布局
     QVBoxLayout *controlLayout = new QVBoxLayout();
     controlLayout->setSpacing(15);
+    
+    // 标题 "5vs5比赛控制"
+    QLabel *titleLabel = new QLabel("5vs5比赛控制", this);
+    titleLabel->setFont(font);
+    controlLayout->addWidget(titleLabel);
     
     // 单双后卫
     QHBoxLayout *danShuangLayout = new QHBoxLayout();
@@ -252,8 +240,7 @@ void MatchDlg_5vs5::initUI()
     roleExchangeLayout->addWidget(btnExchangeRole);
     controlLayout->addLayout(roleExchangeLayout);
     
-    topLayout->addLayout(controlLayout);
-    mainLayout->addLayout(topLayout);
+    mainLayout->addLayout(controlLayout);
     
     // 输出区域
     QLabel *outputLabel = new QLabel(this);
@@ -284,7 +271,11 @@ void MatchDlg_5vs5::initUI()
     connect(radioRightDirect, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
     connect(radioLeftGoalkeeper, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
     connect(radioRightGoalkeeper, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
+    
+
 }
+
+
 
 void MatchDlg_5vs5::onButtonStart()
 {

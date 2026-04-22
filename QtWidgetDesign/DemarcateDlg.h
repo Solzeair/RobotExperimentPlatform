@@ -1,4 +1,4 @@
-﻿/*
+/*
 * 场地标定对话框头文件
 * 写作人 李青
 * 功能 标定界面的类，包含标定操作控制按钮、进度条及场地边界点等属性。
@@ -15,6 +15,29 @@
 #include <QMessageBox>
 #include <QThread>
 #include <QCoreApplication>
+#include <QTimer>
+#include <QElapsedTimer>
+#include <QPainter>
+#include <QImage>
+#include <QFile>
+#include <QVector>
+
+// 前向声明
+class DisplayDlg;
+
+// 场地信息结构体
+typedef struct {
+    float x;      // x坐标
+    float y;      // y坐标
+    char flag;    // 边界标志
+} GROUNDINFO;
+
+typedef struct {
+    GROUNDINFO groundInfo[640][480]; // 场地信息数组
+} Ground;
+
+// 全局变量
+extern Ground ground;
 
 class DemarcateDlg : public QWidget
 {
@@ -23,6 +46,10 @@ class DemarcateDlg : public QWidget
 public:
     DemarcateDlg(QWidget *parent = nullptr); // 初始化标定界面和边界点
     ~DemarcateDlg();
+    
+    // 外部调用方法
+    void PushPoint(const QPoint &pt); // 添加标定点
+    void setDisplayDlg(DisplayDlg *dlg); // 设置DisplayDlg指针
 
 private slots:
     void onButtonSet();         // 开始标定按钮
@@ -35,6 +62,7 @@ private slots:
 
 private:
     void initUI();              // UI初始化
+    void paintEvent(QPaintEvent *event) override; // 重绘事件
 
 private:
     // --- 布局部件 ---
@@ -55,7 +83,11 @@ private:
     bool m_isSaved;                                     // 标定参数是否已保存
     bool m_needResetDC;                                 // 是否需要重置设备上下文(DC)的状态
     QVector<QPoint> m_points;                           // 用户手动标定点集合
+    DisplayDlg *m_pDispDlg;                             // DisplayDlg指针
+    QImage m_resultImage;                               // 标定结果图像
 
     // 场地边界点
     QPoint point[13];                                   // 预定义场地固定边界坐标
+    
+
 };

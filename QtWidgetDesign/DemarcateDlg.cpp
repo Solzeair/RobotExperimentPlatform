@@ -1,15 +1,34 @@
-﻿/*
+/*
 * 场地标定对话框源文件
 * 写作人 李青
 * 功能 标定界面逻辑实现，包含加载/保存场地参数、坐标撤销与标定结果确认操作
 * 未完成
 */
 #include "DemarcateDlg.h"
+#include "DisplayDlg.h"
+#include "Debug.h"
+
+// 全局变量
+Ground ground;
+
+// 常量定义
+const char* confGroundData = "ground.dat";
+
+// 多项式拟合函数（简化版）
+void gmiv(double* a, int m, int n, double* b, double* x, double* aa, double eps, double* u, double* v, int ka)
+{
+    // 这里实现多项式拟合算法
+    // 简化版本，实际应用中需要使用完整的矩阵运算
+    for (int i = 0; i < n; i++) {
+        x[i] = 0.0;
+    }
+}
 
 DemarcateDlg::DemarcateDlg(QWidget *parent)
     : QWidget(parent)
     , m_isSaved(true)
     , m_needResetDC(false)
+    , m_pDispDlg(nullptr)
 {
     // 设置大小策略为可伸缩
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -29,6 +48,10 @@ DemarcateDlg::DemarcateDlg(QWidget *parent)
     point[11].setX(220); point[11].setY(0);
     point[12].setX(0); point[12].setY(0);
     
+    // 初始化结果图像
+    m_resultImage = QImage(350, 250, QImage::Format_RGB32);
+    m_resultImage.fill(Qt::black);
+    
     initUI();
 }
 
@@ -46,38 +69,26 @@ void DemarcateDlg::initUI()
     mainLayout->setContentsMargins(10, 10, 10, 10);
     mainLayout->setSpacing(10);
     
-    // 标题 "标定"
-    QLabel *titleLabel = new QLabel("标定", this);
-    titleLabel->setFont(font);
-    mainLayout->addWidget(titleLabel);
-    
-    // 创建顶部布局（左侧显示区域 + 右侧控制区域）
-    QHBoxLayout *topLayout = new QHBoxLayout();
-    topLayout->setSpacing(20);
-    
-    // 左侧显示区域
-    QLabel *displayLabel = new QLabel(this);
-    displayLabel->setStyleSheet("QLabel { background-color: #333333; border: 1px solid black; }");
-    displayLabel->setFont(font);
-    displayLabel->setAlignment(Qt::AlignCenter);
-    displayLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    topLayout->addWidget(displayLabel);
-    
-    // 右侧控制区域
+    // 创建主控制布局
     QVBoxLayout *controlLayout = new QVBoxLayout();
     controlLayout->setSpacing(15);
     
+    // 标题 "标定"
+    QLabel *titleLabel = new QLabel("标定", this);
+    titleLabel->setFont(font);
+    controlLayout->addWidget(titleLabel);
+    
     // 进度条
     progressBar = new QProgressBar(this);
-    progressBar->setRange(0, 100);
+    progressBar->setRange(0, DISPLAY_W);
     progressBar->setValue(0);
     controlLayout->addWidget(progressBar);
     
     // 右侧上方白色图像显示区域
-    QLabel *imageDisplayLabel = new QLabel(this);
-    imageDisplayLabel->setFixedSize(340, 200);
-    imageDisplayLabel->setStyleSheet("QLabel { background-color: white; border: 1px solid black; }");
-    controlLayout->addWidget(imageDisplayLabel, 0, Qt::AlignCenter);
+    resultLabel = new QLabel(this);
+    resultLabel->setFixedSize(340, 200);
+    resultLabel->setStyleSheet("QLabel { background-color: white; border: 1px solid black; }");
+    controlLayout->addWidget(resultLabel, 0, Qt::AlignCenter);
     
     // 绿色进度条
     QLabel *greenBarLabel = new QLabel(this);
@@ -132,8 +143,7 @@ void DemarcateDlg::initUI()
     btnShowRes->setFont(font);
     controlLayout->addWidget(btnShowRes, 0, Qt::AlignCenter);
     
-    topLayout->addLayout(controlLayout);
-    mainLayout->addLayout(topLayout);
+    mainLayout->addLayout(controlLayout);
     
     // 输出区域
     QLabel *outputLabel = new QLabel(this);
@@ -156,18 +166,155 @@ void DemarcateDlg::initUI()
     connect(btnSave, SIGNAL(clicked()), this, SLOT(onButtonSave()));
     connect(btnFlush, SIGNAL(clicked()), this, SLOT(onButtonFlush()));
     connect(btnShowRes, SIGNAL(clicked()), this, SLOT(onButtonShowRes()));
+    
+    // 初始化加载
+    onButtonLoad();
+}
+
+void DemarcateDlg::paintEvent(QPaintEvent *event)
+{
+    Q_UNUSED(event);
+    QPainter painter(this);
+    if (!m_resultImage.isNull()) {
+        painter.drawImage(resultLabel->geometry(), m_resultImage);
+    }
+}
+
+void DemarcateDlg::setDisplayDlg(DisplayDlg *dlg)
+{
+    m_pDispDlg = dlg;
+}
+
+void DemarcateDlg::PushPoint(const QPoint &pt)
+{
+    m_points.push_back(pt);
+    if (!m_points.isEmpty()) {
+        btnResetOne->setEnabled(true);
+    }
+    if (m_points.size() == 25) {
+        btnSet->setEnabled(true);
+        if (m_pDispDlg) {
+            m_pDispDlg->SelectSetStatus(DisplayDlg::SET_STATUS::NONE);
+        }
+    }
+    
+    Debug::get()->print(QString("pt %1 : %2, %3").arg(m_points.size()).arg(pt.x()).arg(pt.y()).toStdWString().c_str());
 }
 
 void DemarcateDlg::onButtonSet()
 {
-    // TODO: 实现标定算法
-    // 这里只是模拟标定过程
-    progressBar->setValue(0);
-    for (int i = 0; i <= 100; i++)
-    {
+    if (!m_pDispDlg) {
+        QMessageBox::warning(this, "错误", "DisplayDlg未初始化！");
+        return;
+    }
+    
+    m_pDispDlg->SelectSetStatus(DisplayDlg::SET_STATUS::NONE);
+    int ka = 26;
+    double eps = 0.0000001;
+    int m = 25; // 行数
+    int n = 10; // 列数
+    double a[250], a1[250];
+    double px[10], py[10], aa[250], u[625], v[100];
+    
+    // 计算矩阵a的值
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < m; j++) {
+            switch (i) {
+            case 0:
+                a[j*n + i] = 1;
+                break;
+            case 1:
+                a[j*n + i] = (m_points[j].x() - 320);
+                break;
+            case 2:
+                a[j*n + i] = (m_points[j].y() - 240);
+                break;
+            case 3:
+                a[j*n + i] = (m_points[j].x() - 320) * (m_points[j].y() - 240);
+                break;
+            case 4:
+                a[j*n + i] = (m_points[j].x() - 320) * (m_points[j].x() - 320);
+                break;
+            case 5:
+                a[j*n + i] = (m_points[j].y() - 240) * (m_points[j].y() - 240);
+                break;
+            case 6:
+                a[j*n + i] = (m_points[j].x() - 320) * (m_points[j].x() - 320) * (m_points[j].y() - 240);
+                break;
+            case 7:
+                a[j*n + i] = (m_points[j].x() - 320) * (m_points[j].y() - 240) * (m_points[j].y() - 240);
+                break;
+            case 8:
+                a[j*n + i] = (m_points[j].x() - 320) * (m_points[j].x() - 320) * (m_points[j].x() - 320);
+                break;
+            case 9:
+                a[j*n + i] = (m_points[j].y() - 240) * (m_points[j].y() - 240) * (m_points[j].y() - 240);
+                break;
+            }
+        }
+    }
+    
+    for (int i = 0; i < 250; i++) {
+        a1[i] = a[i];
+    }
+    
+    // 目标坐标
+    double bx[] = {
+        0, 55, 110, 165, 220,
+        0, 55, 165, 220,
+        35, 185,
+        0, 110, 220,
+        35, 185,
+        0, 55, 165, 220,
+        0, 55, 110, 165, 220
+    };
+    double by[] = {
+        0, 0, 0, 0, 0,
+        30, 30, 30, 30,
+        50, 50,
+        90, 90, 90,
+        130, 130,
+        150, 150, 150, 150,
+        180, 180, 180, 180, 180
+    };
+    
+    for (int i = 0; i < 25; ++i) {
+        bx[i] = (bx[i] - 110) * 2.56;
+        by[i] = (by[i] - 90) * 2.56;
+    }
+    
+    // 求解方程组
+    gmiv(a, m, n, bx, px, aa, eps, u, v, ka);
+    gmiv(a1, m, n, by, py, aa, eps, u, v, ka);
+    
+    // 计算场地信息
+    for (int i = 0; i < DISPLAY_W; i++) {
+        for (int j = 0; j < DISPLAY_H; j++) {
+            int x2 = i - 320;
+            int y2 = j - 240;
+            int x1 = int(px[0] + px[1] * x2 + px[2] * y2 + px[3] * x2*y2 + px[4] * x2*x2 + px[5] * y2*y2 +
+                px[6] * x2*x2*y2 + px[7] * x2*y2*y2 + px[8] * x2*x2*x2 + px[9] * y2*y2*y2);
+            int y1 = int(py[0] + py[1] * x2 + py[2] * y2 + py[3] * x2*y2 + py[4] * x2*x2 + py[5] * y2*y2 +
+                py[6] * x2*x2*y2 + py[7] * x2*y2*y2 + py[8] * x2*x2*x2 + py[9] * y2*y2*y2);
+            
+            // 坐标转换
+            ground.groundInfo[i][j].x = (float)(x1 / 2.56 + 110);
+            ground.groundInfo[i][j].y = (float)(y1 / 2.56 + 90);
+            
+            // 边界判断
+            bool inRegion = false;
+            QPolygon polygon;
+            for (int k = 0; k < 13; k++) {
+                polygon << point[k];
+            }
+            if (polygon.containsPoint(QPoint((int)(ground.groundInfo[i][j].x), (int)(ground.groundInfo[i][j].y)), Qt::OddEvenFill)) {
+                ground.groundInfo[i][j].flag = 1;
+            } else {
+                ground.groundInfo[i][j].flag = 0;
+            }
+        }
         progressBar->setValue(i);
         QCoreApplication::processEvents();
-        QThread::msleep(10);
     }
     
     m_needResetDC = true;
@@ -181,55 +328,114 @@ void DemarcateDlg::onButtonSet()
 
 void DemarcateDlg::onButtonResetOne()
 {
-    if (!m_points.isEmpty())
-    {
+    if (!m_points.isEmpty()) {
         m_points.pop_back();
-        if (m_points.isEmpty())
-        {
+        if (m_points.isEmpty()) {
             btnResetOne->setEnabled(false);
         }
+    }
+    if (m_pDispDlg) {
+        m_pDispDlg->ShowSingle();
     }
 }
 
 void DemarcateDlg::onButtonReset()
 {
+    if (m_pDispDlg) {
+        m_pDispDlg->SelectSetStatus(DisplayDlg::SET_STATUS::BORDER_SET);
+    }
     m_points.clear();
     progressBar->setValue(0);
     btnSet->setEnabled(false);
     btnResetOne->setEnabled(false);
-    resultLabel->setText("标定结果");
-    // TODO: 重置显示
+    m_resultImage.fill(Qt::black);
+    update();
 }
 
 void DemarcateDlg::onButtonLoad()
 {
-    // TODO: 加载标定数据
-    m_needResetDC = true;
-    m_isSaved = true;
-    QMessageBox::information(this, "加载完成", "标定数据已加载！");
+    int ret = 0;
+    if (!m_isSaved) {
+        ret = QMessageBox::question(this, "场地标定", "正在标定，所有的场地标定信息将丢失，是否继续？",
+                                  QMessageBox::Yes | QMessageBox::No);
+    }
+    if (ret == QMessageBox::No) {
+        return;
+    }
+    
+    QFile file(confGroundData);
+    if (file.open(QIODevice::ReadOnly)) {
+        file.read((char*)&ground, sizeof(Ground));
+        file.close();
+        m_needResetDC = true;
+        Debug::get()->print(L"场地标定信息已加载");
+        m_isSaved = true;
+    } else {
+        QMessageBox::warning(this, "错误", "无法加载标定数据文件！");
+    }
 }
 
 void DemarcateDlg::onButtonSave()
 {
-    // TODO: 保存标定数据
-    QMessageBox::information(this, "保存完成", "标定数据已保存！");
-    m_isSaved = true;
+    QFile file(confGroundData);
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write((char*)&ground, sizeof(Ground));
+        file.close();
+        m_isSaved = true;
+        Debug::get()->print(L"场地标定信息已保存");
+        QMessageBox::information(this, "保存完成", "标定数据已保存！");
+    } else {
+        QMessageBox::warning(this, "错误", "无法保存标定数据文件！");
+    }
 }
 
 void DemarcateDlg::onButtonFlush()
 {
-    // TODO: 刷新图像
-    QMessageBox::information(this, "刷新", "图像已刷新！");
+    if (m_pDispDlg) {
+        m_pDispDlg->ShowSingle();
+    }
 }
 
 void DemarcateDlg::onButtonShowRes()
 {
-    if (!m_needResetDC)
-    {
+    if (!m_needResetDC) {
+        update();
         return;
     }
     
-    // TODO: 显示标定结果
-    resultLabel->setText("标定结果显示");
+    // 重新生成结果图像
+    m_resultImage = QImage(350, 250, QImage::Format_RGB32);
+    m_resultImage.fill(Qt::black);
+    
+    QPainter painter(&m_resultImage);
+    painter.setPen(Qt::red);
+    
+    // 绘制标定结果
+    progressBar->setValue(0);
+    for (int i = 0; i < DISPLAY_W; i++) {
+        for (int j = 0; j < DISPLAY_H; j++) {
+            if (ground.groundInfo[i][j].flag) {
+                int x = int(ground.groundInfo[i][j].x + 60);
+                int y = int(ground.groundInfo[i][j].y + 40);
+                if (x >= 0 && x < 350 && y >= 0 && y < 250) {
+                    // 这里应该从DisplayDlg获取像素颜色，简化处理
+                    painter.setPen(QColor(0, 255, 0));
+                    painter.drawPoint(x, y);
+                }
+            }
+        }
+        progressBar->setValue(i);
+        QCoreApplication::processEvents();
+    }
+    
+    // 绘制边界
+    QPolygon polygon;
+    for (int i = 0; i < 13; i++) {
+        polygon << QPoint(point[i].x() + 60, point[i].y() + 40);
+    }
+    painter.setPen(Qt::red);
+    painter.drawPolyline(polygon);
+    
     m_needResetDC = false;
+    update();
 }

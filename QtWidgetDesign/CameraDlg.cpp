@@ -1,4 +1,4 @@
-﻿/*
+/*
 * 摄像头调整对话框文件
 * 写作人 李青
 * 功能 摄像头调整界面设计，包含亮度、增益、对比度、快门、红色、绿色、蓝色等参数的滑块和输入框，以及保存按钮。
@@ -6,6 +6,16 @@
 */
 
 #include "CameraDlg.h"
+#include "Camera.h"
+#include <QCoreApplication>
+#include <QFile>
+#include <QTextStream>
+#include <QKeyEvent>
+#include <QTimer>
+#include <QElapsedTimer>
+#include <QSpacerItem>
+
+// 使用项目中已有的Camera类
 
 CameraDlg::CameraDlg(QWidget *parent)
     : QWidget(parent)
@@ -27,6 +37,9 @@ CameraDlg::CameraDlg(QWidget *parent)
     green = 0.0;
     blue = 0.0;
     
+    // 初始化相机实例
+    _pCamera = nullptr;
+    
     // 设置大小策略为可伸缩
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     
@@ -44,31 +57,41 @@ void CameraDlg::initUI()
     
     // 创建主布局
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setContentsMargins(10, 30, 10, 10);
     mainLayout->setSpacing(10);
+    
+    // 创建主控制布局
+    QVBoxLayout *controlLayout = new QVBoxLayout();
+    // 设置滚轴之间间隔为3厘米（约30像素）
+    controlLayout->setSpacing(30);
     
     // 标题 "摄像头调整"
     QLabel *titleLabel = new QLabel("摄像头调整", this);
     titleLabel->setFont(font);
-    mainLayout->addWidget(titleLabel);
+    controlLayout->addWidget(titleLabel);
+    controlLayout->setAlignment(titleLabel, Qt::AlignTop);
     
-    // 创建顶部布局（摄像头显示 + 右侧控制）
-    QHBoxLayout *topLayout = new QHBoxLayout();
-    topLayout->setSpacing(20);
-    
-    // 摄像头显示区域
-    cameraViewLabel = new QLabel(this);
-    cameraViewLabel->setStyleSheet("QLabel { background-color: #333333; border: 1px solid black; }");
-    cameraViewLabel->setFont(font);
-    cameraViewLabel->setText("摄像头显示区域");
-    cameraViewLabel->setAlignment(Qt::AlignCenter);
-    cameraViewLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    topLayout->addWidget(cameraViewLabel);
-    
-    // 右侧控制区域
-    QVBoxLayout *controlLayout = new QVBoxLayout();
-    // 设置滚轴之间间隔，使用合理的值确保所有滚轴都能显示
-    controlLayout->setSpacing(30);
+    // 获取相机实例并读取初始参数
+    _pCamera = Camera::GetInstance();
+    if (_pCamera) {
+        // 从相机获取初始参数值
+        slideBlackLevel = _pCamera->GetBlackLevel();
+        slideGain = _pCamera->GetGain();
+        slideGamma = _pCamera->GetGamma();
+        slideShutter = _pCamera->GetShutter();
+        slideRed = _pCamera->GetRed();
+        slideGreen = _pCamera->GetGreen();
+        slideBlue = _pCamera->GetBlue();
+        
+        // 转换为显示值
+        blackLevel = slideBlackLevel / 1000.0;
+        gain = slideGain / 1000.0;
+        gamma = slideGamma / 1000.0;
+        shutter = slideShutter;
+        red = slideRed / 1000.0;
+        green = slideGreen / 1000.0;
+        blue = slideBlue / 1000.0;
+    }
     
     // 亮度参数组
     QHBoxLayout *blackLevelLayout = new QHBoxLayout();
@@ -243,8 +266,7 @@ void CameraDlg::initUI()
     btnSaveCamera->setFont(font);
     controlLayout->addWidget(btnSaveCamera, 0, Qt::AlignCenter);
     
-    topLayout->addLayout(controlLayout);
-    mainLayout->addLayout(topLayout);
+    mainLayout->addLayout(controlLayout);
     
     // 输出区域
     outputLabel = new QLabel(this);
@@ -273,13 +295,25 @@ void CameraDlg::initUI()
     connect(editRed, SIGNAL(returnPressed()), this, SLOT(onEditReturnPressed()));
     connect(editGreen, SIGNAL(returnPressed()), this, SLOT(onEditReturnPressed()));
     connect(editBlue, SIGNAL(returnPressed()), this, SLOT(onEditReturnPressed()));
+    
+    // 安装事件过滤器，用于处理ESC键事件
+    installEventFilter(this);
+    
+
 }
+
+
 
 void CameraDlg::onSliderBlackLevelChanged(int value)
 {
     slideBlackLevel = value;
     blackLevel = value / 1000.0;
     editBlackLevel->setText(QString::number(blackLevel, 'f', 3));
+    
+    // 更新相机参数
+    if (_pCamera) {
+        _pCamera->SetBlackLevel(value);
+    }
 }
 
 void CameraDlg::onSliderGainChanged(int value)
@@ -287,6 +321,11 @@ void CameraDlg::onSliderGainChanged(int value)
     slideGain = value;
     gain = value / 1000.0;
     editGain->setText(QString::number(gain, 'f', 3));
+    
+    // 更新相机参数
+    if (_pCamera) {
+        _pCamera->SetGain(value);
+    }
 }
 
 void CameraDlg::onSliderGammaChanged(int value)
@@ -294,6 +333,11 @@ void CameraDlg::onSliderGammaChanged(int value)
     slideGamma = value;
     gamma = value / 1000.0;
     editGamma->setText(QString::number(gamma, 'f', 3));
+    
+    // 更新相机参数
+    if (_pCamera) {
+        _pCamera->SetGamma(value);
+    }
 }
 
 void CameraDlg::onSliderShutterChanged(int value)
@@ -301,6 +345,11 @@ void CameraDlg::onSliderShutterChanged(int value)
     slideShutter = value;
     shutter = value;
     editShutter->setText(QString::number(shutter));
+    
+    // 更新相机参数
+    if (_pCamera) {
+        _pCamera->SetShutter(value);
+    }
 }
 
 void CameraDlg::onSliderRedChanged(int value)
@@ -308,6 +357,11 @@ void CameraDlg::onSliderRedChanged(int value)
     slideRed = value;
     red = value / 1000.0;
     editRed->setText(QString::number(red, 'f', 3));
+    
+    // 更新相机参数
+    if (_pCamera) {
+        _pCamera->SetRed(value);
+    }
 }
 
 void CameraDlg::onSliderGreenChanged(int value)
@@ -315,6 +369,11 @@ void CameraDlg::onSliderGreenChanged(int value)
     slideGreen = value;
     green = value / 1000.0;
     editGreen->setText(QString::number(green, 'f', 3));
+    
+    // 更新相机参数
+    if (_pCamera) {
+        _pCamera->SetGreen(value);
+    }
 }
 
 void CameraDlg::onSliderBlueChanged(int value)
@@ -322,12 +381,22 @@ void CameraDlg::onSliderBlueChanged(int value)
     slideBlue = value;
     blue = value / 1000.0;
     editBlue->setText(QString::number(blue, 'f', 3));
+    
+    // 更新相机参数
+    if (_pCamera) {
+        _pCamera->SetBlue(value);
+    }
 }
 
 void CameraDlg::onSaveCamera()
 {
-    // TODO: 保存摄像头参数到文件
-    QMessageBox::information(this, "保存成功", "摄像头参数已保存！");
+    // 保存摄像头参数到文件
+    if (_pCamera) {
+        _pCamera->WriteConfig();
+        QMessageBox::information(this, "保存成功", "摄像头参数已保存！");
+    } else {
+        QMessageBox::warning(this, "保存失败", "无法连接到相机！");
+    }
 }
 
 void CameraDlg::onEditReturnPressed()
@@ -360,4 +429,29 @@ void CameraDlg::onEditReturnPressed()
     blue = editBlue->text().toDouble();
     slideBlue = (int)(blue * 1000);
     sliderBlue->setValue(slideBlue);
+    
+    // 更新相机参数
+    if (_pCamera) {
+        _pCamera->SetBlackLevel(slideBlackLevel);
+        _pCamera->SetGain(slideGain);
+        _pCamera->SetGamma(slideGamma);
+        _pCamera->SetShutter(slideShutter);
+        _pCamera->SetRed(slideRed);
+        _pCamera->SetGreen(slideGreen);
+        _pCamera->SetBlue(slideBlue);
+    }
+}
+
+bool CameraDlg::eventFilter(QObject *obj, QEvent *event)
+{
+    // 处理ESC键事件，禁止通过ESC键关闭对话框
+    if (event->type() == QEvent::KeyPress)
+    {
+        QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
+        if (keyEvent->key() == Qt::Key_Escape)
+        {
+            return true; // 拦截ESC键事件
+        }
+    }
+    return QWidget::eventFilter(obj, event);
 }

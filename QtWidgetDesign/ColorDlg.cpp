@@ -1,4 +1,4 @@
-﻿#include "ColorDlg.h"
+#include "ColorDlg.h"
 
 ColorDlg::ColorDlg(QWidget *parent)
     : QWidget(parent)
@@ -23,6 +23,12 @@ ColorDlg::ColorDlg(QWidget *parent)
 ColorDlg::~ColorDlg()
 {}
 
+ColorDlg* ColorDlg::getInstance()
+{
+    static ColorDlg instance; // 静态局部变量，保证只创建一次
+    return &instance;
+}
+
 void ColorDlg::initUI()
 {
     // 设置字体为楷体，12号，加粗
@@ -34,26 +40,14 @@ void ColorDlg::initUI()
     mainLayout->setContentsMargins(10, 10, 10, 10);
     mainLayout->setSpacing(10);
     
+    // 创建主控制布局
+    QVBoxLayout *controlLayout = new QVBoxLayout();
+    controlLayout->setSpacing(15);
+    
     // 标题 "采色"
     QLabel *titleLabel = new QLabel("采色", this);
     titleLabel->setFont(font);
-    mainLayout->addWidget(titleLabel);
-    
-    // 创建顶部布局（左侧显示区域 + 右侧控制区域）
-    QHBoxLayout *topLayout = new QHBoxLayout();
-    topLayout->setSpacing(20);
-    
-    // 左侧显示区域
-    QLabel *displayLabel = new QLabel(this);
-    displayLabel->setStyleSheet("QLabel { background-color: #333333; border: 1px solid black; }");
-    displayLabel->setFont(font);
-    displayLabel->setAlignment(Qt::AlignCenter);
-    displayLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    topLayout->addWidget(displayLabel);
-    
-    // 右侧控制区域
-    QVBoxLayout *controlLayout = new QVBoxLayout();
-    controlLayout->setSpacing(15);
+    controlLayout->addWidget(titleLabel);
     
     // 右侧上方布局
     QHBoxLayout *topRightLayout = new QHBoxLayout();
@@ -275,8 +269,7 @@ void ColorDlg::initUI()
     
     controlLayout->addLayout(scrollBarLayout);
     
-    topLayout->addLayout(controlLayout);
-    mainLayout->addLayout(topLayout);
+    mainLayout->addLayout(controlLayout);
     
     // 输出区域
     QLabel *outputLabel = new QLabel(this);
@@ -299,7 +292,11 @@ void ColorDlg::initUI()
     connect(scrollBarHMin, SIGNAL(valueChanged(int)), this, SLOT(onScrollBarChanged()));
     connect(scrollBarSMin, SIGNAL(valueChanged(int)), this, SLOT(onScrollBarChanged()));
     connect(scrollBarIMin, SIGNAL(valueChanged(int)), this, SLOT(onScrollBarChanged()));
+    
+
 }
+
+
 
 void ColorDlg::onButtonColorTest()
 {

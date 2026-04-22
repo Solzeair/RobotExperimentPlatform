@@ -1,9 +1,10 @@
-﻿#include "QtWidgetDesign.h"
+#include "QtWidgetDesign.h"
 #include "CameraDlg.h"
 #include "RobotDlg.h"
 #include "DemarcateDlg.h"
 #include "ColorDlg.h"
 #include "MatchDlg_5vs5.h"
+#include "DisplayDlg.h"
 
 QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     : CFrameLessWidgetBase(parent)
@@ -25,7 +26,22 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     // 调用父类的方法设置标题栏文本
     this->setWindowTitleText("XSYU Football Robot Experimental Platform"); // XSYU 足球机器人 实验平台
 
-    // 创建 QTabWidget 类为主页面容器
+    // 创建主布局
+    QHBoxLayout* mainLayout = new QHBoxLayout();
+    
+    // 左侧显示区域 - 与MFC版本保持一致
+    DisplayDlg* displayDlg = new DisplayDlg(this);
+    displayDlg->setFixedSize(640, 512);  // 480显示区域 + 32帧率标签（与右侧标签栏高度一致）
+    
+    // 创建垂直布局，使DisplayDlg在垂直方向上偏上
+    QVBoxLayout* leftLayout = new QVBoxLayout();
+    leftLayout->addStretch(1);  // 顶部空白（较小比例）
+    leftLayout->addWidget(displayDlg);
+    leftLayout->addStretch(2);  // 底部空白（较大比例）
+    
+    mainLayout->addLayout(leftLayout);
+    
+    // 右侧标签页控件
     QTabWidget* myTabWidget = new QTabWidget(this);
     
     // 设置标签页为可伸缩
@@ -40,11 +56,11 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
         "}"
         "\n"
         "QTabBar::tab:selected {"     // 选中标签加深颜色
-        "   font-weight: bold;"
+        "   font-weight: bold;" 
         "}"
     );
 
-    // 2. 添加标签  
+    // 添加标签  
     CameraDlg* cameraDlg = new CameraDlg(myTabWidget);
     myTabWidget->addTab(cameraDlg, "Camera");      // 摄像头
     
@@ -52,6 +68,7 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     myTabWidget->addTab(robotDlg, "Frequency");   // 频率
     
     DemarcateDlg* demarcateDlg = new DemarcateDlg(myTabWidget);
+    demarcateDlg->setDisplayDlg(displayDlg);  // 设置DisplayDlg指针
     myTabWidget->addTab(demarcateDlg, "Demarcate");   // 标定
     
     ColorDlg* colorDlg = new ColorDlg(myTabWidget);
@@ -59,9 +76,38 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     
     MatchDlg_5vs5* matchDlg = new MatchDlg_5vs5(myTabWidget);
     myTabWidget->addTab(matchDlg, "competition"); // 比赛
+    
+    // 连接标签页切换信号
+    connect(myTabWidget, &QTabWidget::currentChanged, [=](int index) {
+        switch (index) {
+        case 0: // Camera标签页
+            displayDlg->ShowDynamic();
+            break;
+        case 1: // Frequency标签页
+            displayDlg->ShowCarNum();
+            break;
+        case 2: // Demarcate标签页
+            displayDlg->ShowSingle();
+            break;
+        case 3: // Color标签页
+            displayDlg->ShowSingle();
+            displayDlg->SelectSetStatus(DisplayDlg::SET_STATUS::COLOR_SET);
+            break;
+        case 4: // competition标签页
+            displayDlg->ShowInitGame();
+            break;
+        }
+    });
+    
+    // 将标签页添加到主布局
+    mainLayout->addWidget(myTabWidget);
 
+    // 创建一个中心部件来容纳主布局
+    QWidget* centralWidget = new QWidget();
+    centralWidget->setLayout(mainLayout);
+    
     // 3. 核心最后一步：调用基类提供的接口，让基类把它加到主界面布局中去
-    this->setCentralWidget(myTabWidget);
+    this->setCentralWidget(centralWidget);
 }
 
 QtWidgetDesign::~QtWidgetDesign()

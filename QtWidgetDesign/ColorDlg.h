@@ -1,4 +1,4 @@
-﻿/*
+/*
 * 采色对话框头文件
 * 写作人 李青
 * 功能 采色界面的类定义，包含HSI阈值调节滑块、颜色测试按钮和色环显示等属性和方法
@@ -18,6 +18,8 @@
 #include <QPainter>
 #include <QColor>
 #include <cmath>
+#include <QTimer>
+#include <QElapsedTimer>
 
 class ColorDlg : public QWidget
 {
@@ -26,6 +28,8 @@ class ColorDlg : public QWidget
 public:
     ColorDlg(QWidget *parent = nullptr); // 初始化采色界面
     ~ColorDlg();
+    static ColorDlg* getInstance(); // 获取单例实例
+    const int(*getHSIThreshold())[6] { return HSIThreshold; } // 获取HSI阈值
 
 private slots:
     void onButtonColorTest();             // 颜色测试按钮
@@ -74,4 +78,6 @@ private:
     int HSIThreshold[8][6];               // 各颜色HSI阈值
     QVector<QPoint> m_vecColorSet;        // 采样颜色点集合
     int yi[255];                          // 特定映射数值
+    
+
 };
