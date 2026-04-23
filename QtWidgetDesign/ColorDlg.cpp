@@ -1,4 +1,5 @@
 #include "ColorDlg.h"
+#include "Debug.h"
 
 ColorDlg::ColorDlg(QWidget *parent)
     : QWidget(parent)
@@ -37,21 +38,23 @@ void ColorDlg::initUI()
     
     // 创建主布局
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(10, 10, 10, 10);
-    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(20, 0, 20, 20);
+    mainLayout->setSpacing(15);
     
     // 创建主控制布局
     QVBoxLayout *controlLayout = new QVBoxLayout();
-    controlLayout->setSpacing(15);
+    // 设置控件之间间隔为12像素，让内容排列更松散
+    controlLayout->setSpacing(12);
     
     // 标题 "采色"
     QLabel *titleLabel = new QLabel("采色", this);
     titleLabel->setFont(font);
     controlLayout->addWidget(titleLabel);
+    controlLayout->setAlignment(titleLabel, Qt::AlignTop);
     
     // 右侧上方布局
     QHBoxLayout *topRightLayout = new QHBoxLayout();
-    topRightLayout->setSpacing(15);
+    topRightLayout->setSpacing(10);
     
     // 右侧上方白色显示区域
     QLabel *rightDisplayLabel = new QLabel(this);
@@ -271,15 +274,6 @@ void ColorDlg::initUI()
     
     mainLayout->addLayout(controlLayout);
     
-    // 输出区域
-    QLabel *outputLabel = new QLabel(this);
-    outputLabel->setStyleSheet("QLabel { background-color: #f0f0f0; border: 1px solid black; font-family: Consolas; font-size: 10pt; }");
-    outputLabel->setFont(font);
-    outputLabel->setText("输出区域:");
-    outputLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    outputLabel->setFixedHeight(100);
-    mainLayout->addWidget(outputLabel);
-    
     // 连接信号槽
     connect(colorTestButton, SIGNAL(clicked()), this, SLOT(onButtonColorTest()));
     connect(runTestButton, SIGNAL(clicked()), this, SLOT(onButtonRunTest()));
@@ -316,11 +310,13 @@ void ColorDlg::onButtonStopTest()
 void ColorDlg::onButtonSave()
 {
     // TODO: 实现保存功能
+    Debug::get()->print(L"采色信息已保存");
 }
 
 void ColorDlg::onButtonLoad()
 {
     // TODO: 实现加载功能
+    Debug::get()->print(L"采色信息加载完成");
 }
 
 void ColorDlg::onSegCheckBoxStateChanged(int state)

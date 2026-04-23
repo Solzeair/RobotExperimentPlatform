@@ -31,6 +31,14 @@ CONFIG += c++11
 
 LIBS += -L$$PWD/ -lUSB340HID61
 
+# OpenCV配置
+INCLUDEPATH += C:/opencv/build/include
+LIBS += -LC:/opencv/build/x64/vc15/lib \
+    -lopencv_core455 \
+    -lopencv_imgproc455 \
+    -lopencv_highgui455 \
+    -lopencv_videoio455
+
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
 default: target.path = $$[QT_INSTALL_EXAMPLES]/$${TARGET}

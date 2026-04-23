@@ -10,6 +10,62 @@
 #include <QPainter>
 #include <vector>
 
+/*
+* DisplayDlg.h - 显示对话框头文件
+* 
+* 功能：
+* 1. 定义显示对话框的接口和功能
+* 2. 管理左侧显示区域的图像显示
+* 3. 处理相机图像的获取和显示
+* 4. 实现帧率计算和显示
+* 5. 支持用户交互和状态管理
+* 6. 实现目标识别和图像处理
+* 7. 支持足球比赛场景的显示
+*/
+
+// CMovingAvg模板类 - 用于计算移动平均
+template <class T, unsigned int span = 20>
+class CMovingAvg
+{
+public:
+    CMovingAvg() : m_v(span), m_n(0), m_Sum(0) {}
+
+    void Add(T sample)
+    {
+        int idx = m_n % span;
+        if (m_n < span)
+        {
+            m_v[idx] = sample;
+            m_Sum += sample;
+        }
+        else
+        {
+            m_Sum -= m_v[idx];
+            m_Sum += sample;
+            m_v[idx] = sample;
+        }
+        m_n++;
+    }
+
+    double Avg()
+    {
+        if (m_n == 0)
+            return 0;
+        return m_n < span ? m_Sum / (double)m_n : m_Sum / (double)span;
+    }
+
+    void Reset()
+    {
+        m_n = 0;
+        m_Sum = 0;
+    }
+
+private:
+    std::vector<T> m_v;
+    unsigned int m_n;
+    T m_Sum;
+};
+
 // 常量定义
 const int DISPLAY_W = 640;
 const int DISPLAY_H = 480;
@@ -130,10 +186,9 @@ private:
 
     // 显示
     QElapsedTimer m_DisplayWatch;
-    double m_DisplayAvg[20];
-    int m_DisplayAvgCount;
 
-
+    // 绘图
+    QImage m_groundImage;
 
     // 目标识别
     bool ObjectFound[12];
@@ -172,8 +227,8 @@ private:
     bool m_BalLo;
 
     // 帧率计算相关
-    int frameCount;
-    QElapsedTimer lastTime;
+    CMovingAvg<double, 20> m_DisplayAvg;
+    double m_fps;
     QTimer *fpsTimer;
     QLabel *fpsLabel;
 

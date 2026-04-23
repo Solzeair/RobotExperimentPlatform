@@ -1,6 +1,6 @@
-// DisplayDlg.cpp : 实现文件
-//
-
+﻿// DisplayDlg.cpp - 左侧显示区域实现文件
+// 功能：实现摄像头图像显示、目标识别、颜色分析和足球机器人比赛相关功能
+//代码存在问题未修改
 #include "DisplayDlg.h"
 #include "Camera.h"
 #include "Debug.h"
@@ -13,13 +13,14 @@ int HLUT[256][256][256];    //RGB-H 转换表，S,I值分别用公式计算
 // 机器人形状坐标
 int robot_xy[361][12][2];             //机器人方向图像关键点坐标
 
+//功能：初始化显示区域，设置图像数据、机器人形状坐标和颜色转换表
+ 
 DisplayDlg::DisplayDlg(QWidget *parent)
     : QWidget(parent)
     , m_ImageSize(DISPLAY_W, DISPLAY_H)
     , m_bErrorSign(false)
     , m_status(STATUS::Stop)
     , m_setStatus(SET_STATUS::NONE)
-    , m_DisplayAvgCount(0)
     , m_IdenOp(true)
     , stackPointer(0)
     , m_xLeft(0)
@@ -28,7 +29,7 @@ DisplayDlg::DisplayDlg(QWidget *parent)
     , m_yBottom(DISPLAY_H)
     , patchConnect(false)
     , m_BalLo(false)
-    , frameCount(0)
+    , m_fps(0.0)
     , m_Length(7.5)
 {
     // 初始化图像数据
@@ -102,6 +103,8 @@ DisplayDlg::DisplayDlg(QWidget *parent)
     initUI();
 }
 
+// 功能：释放图像数据和定时器资源
+ 
 DisplayDlg::~DisplayDlg()
 {
     if (m_pDispBitmap)
@@ -114,6 +117,8 @@ DisplayDlg::~DisplayDlg()
         delete fpsTimer;
 }
 
+// 功能：创建显示区域、帧率标签和定时器
+ 
 void DisplayDlg::initUI()
 {
     // 设置字体
@@ -127,7 +132,7 @@ void DisplayDlg::initUI()
 
     // 帧率显示标签 - 在显示区域上方，与右侧标签栏高度一致
     fpsLabel = new QLabel(this);
-    fpsLabel->setStyleSheet("QLabel { background-color: rgba(0, 0, 0, 128); color: white; font-size: 12px; padding: 2px; }");
+    fpsLabel->setStyleSheet("QLabel { background-color: transparent; color: black; font-size: 12px; padding: 2px; font-weight: bold; }");
     fpsLabel->setText("FPS: 0");
     fpsLabel->setFixedSize(DISPLAY_W, 32); // 与QTabWidget标签栏高度一致
     fpsLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
@@ -149,21 +154,31 @@ void DisplayDlg::initUI()
     // 初始化帧率更新定时器
     fpsTimer = new QTimer(this);
     connect(fpsTimer, &QTimer::timeout, this, &DisplayDlg::updateFPS);
-    fpsTimer->start(1000); // 每秒更新一次
+    fpsTimer->start(500); // 每500ms更新一次，与MFC版本保持一致
 
-    // 启动计时器
-    lastTime.start();
-}
-
-void DisplayDlg::ShowSingle()
-{
-    if (GrabSingle()) {
-        QImage image(m_pDispSingle, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-        QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
-        displayLabel->setPixmap(pixmap);
+    // 加载场地图像
+    m_groundImage.load("resources/ground.bmp");
+    if (m_groundImage.isNull()) {
+        // 如果图像加载失败，创建一个默认的绿色场地
+        m_groundImage = QImage(DISPLAY_W, DISPLAY_H, QImage::Format_RGB32);
+        m_groundImage.fill(QColor(0, 128, 0)); // 绿色
     }
 }
 
+// 功能：从摄像头获取一帧图像并显示
+ 
+void DisplayDlg::ShowSingle()
+{
+    if (GrabSingle()) {
+        QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
+        QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+        displayLabel->setPixmap(pixmap);
+    }
+    m_status = STATUS::Display;
+}
+
+//功能：启动定时器，持续从摄像头获取图像并显示
+ 
 void DisplayDlg::ShowDynamic()
 {
     if (m_status != STATUS::Game) {
@@ -171,17 +186,28 @@ void DisplayDlg::ShowDynamic()
             Stop();
         }
         m_status = STATUS::Display;
-        m_grabTimer->start(33);
-        m_DisplayWatch.start();
+        // 立即获取并显示一张图像，确保切换标签页时能立即看到摄像头图像
+        if (GrabSingle()) {
+            QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
+            QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+            displayLabel->setPixmap(pixmap);
+            m_DisplayWatch.start();
+        }
+        m_grabTimer->start(500); // 与MFC版本TIMER_SPACE_NUM保持一致
     }
 }
 
+/**
+ * @brief 显示车号
+ * 功能：加载并显示车号图像
+ */
 void DisplayDlg::ShowCarNum()
 {
     Camera *pCamera = Camera::GetInstance();
     if (pCamera->IsGrabbing()) {
         this->Stop();
     }
+    m_status = STATUS::Stop;
     // 加载并显示车号图像
     QImage carNumImage("resources/carnum.bmp");
     if (!carNumImage.isNull()) {
@@ -193,6 +219,8 @@ void DisplayDlg::ShowCarNum()
     }
 }
 
+// 功能：根据颜色阈值显示符合条件的图像区域
+ 
 void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
 {
     if (!(m_status == STATUS::Stop || m_status == STATUS::Prepare))
@@ -262,6 +290,8 @@ void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
     delete m_pTestBitmap;
 }
 
+// 功能：启动测试模式，定时获取并处理图像
+ 
 void DisplayDlg::ShowRunTest(bool ImageSeg)
 {
     if (ImageSeg)
@@ -271,19 +301,26 @@ void DisplayDlg::ShowRunTest(bool ImageSeg)
     m_grabTimer->start(33);
 }
 
+//功能：设置准备状态，显示足球场背景
+ 
 void DisplayDlg::ShowInitGame()
 {
     m_status = STATUS::Prepare;
-    // 清空显示区域
-    displayLabel->setText("准备开始");
+    // 显示绿色足球场背景
+    QPixmap pixmap = QPixmap::fromImage(m_groundImage);
+    displayLabel->setPixmap(pixmap);
 }
 
+// 功能：设置游戏状态，启动游戏逻辑
+ 
 void DisplayDlg::ShowStartGame()
 {
     m_status = STATUS::Game;
     StartGame();
 }
 
+//功能：停止定时器，设置停止状态
+ 
 void DisplayDlg::Stop()
 {
     if (!m_bErrorSign) {
@@ -299,18 +336,29 @@ void DisplayDlg::Stop()
     }
 }
 
+//功能：设置当前操作状态
+ 
 void DisplayDlg::SelectSetStatus(SET_STATUS s)
 {
     m_setStatus = s;
 }
 
+// 功能：绘制足球场背景和机器人
+ 
 void DisplayDlg::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event);
     QPainter painter(this);
-    DrawAll(&painter);
+
+    // 只在比赛相关状态下绘制足球场背景和机器人
+    if (m_status == STATUS::Game || m_status == STATUS::Prepare) {
+        DrawAll(&painter);
+    }
+    // 其他状态不绘制背景，保持displayLabel的内容
 }
 
+// 功能：处理颜色设置时的鼠标拖拽操作
+ 
 void DisplayDlg::mouseMoveEvent(QMouseEvent *event)
 {
     QPoint pos = event->pos();
@@ -325,6 +373,8 @@ void DisplayDlg::mouseMoveEvent(QMouseEvent *event)
     }
 }
 
+//功能：处理颜色设置时的鼠标按下操作
+ 
 void DisplayDlg::mousePressEvent(QMouseEvent *event)
 {
     QPoint pos = event->pos();
@@ -340,6 +390,8 @@ void DisplayDlg::mousePressEvent(QMouseEvent *event)
     }
 }
 
+//功能：定时获取并处理图像
+ 
 void DisplayDlg::onTimer()
 {
     if (m_status == STATUS::Display || m_status == STATUS::RunTest || m_status == STATUS::RunTestSeg)
@@ -360,760 +412,116 @@ void DisplayDlg::onTimer()
     }
 }
 
+//功能：计算并显示实时帧率
+ 
 void DisplayDlg::updateFPS()
 {
-    qint64 elapsed = lastTime.elapsed();
-    double fps = (frameCount * 1000.0) / elapsed;
-    fpsLabel->setText(QString("FPS: %1").arg(fps, 0, 'f', 12));
-    frameCount = 0;
-    lastTime.restart();
+    double avg = m_DisplayAvg.Avg();
+    m_fps = avg == 0 ? 0.0 : 1.0 / avg;
+    m_DisplayAvg.Reset();
+    fpsLabel->setText(QString("FPS: %1").arg(m_fps, 0, 'f', 2));
 }
 
+//功能：根据当前状态处理图像并显示
+ 
 void DisplayDlg::ProcessImage(unsigned char *pBmp)
 {
     // 使用Camera类的ConvertBitmap方法，与MFC版本保持一致
     Camera *pCamera = Camera::GetInstance();
     pCamera->ConvertBitmap(m_pDispBitmap, pBmp, DISPLAY_W, DISPLAY_H);
-    
+
     switch (m_status) {
     case STATUS::Display:
         {
             QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
             QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
             displayLabel->setPixmap(pixmap);
+            m_DisplayAvg.Add(m_DisplayWatch.elapsed());
             m_DisplayWatch.restart();
         }
         break;
     case STATUS::RunTest:
         {
             this->StartTest();
+            m_DisplayAvg.Add(m_DisplayWatch.elapsed());
             m_DisplayWatch.restart();
         }
         break;
     case STATUS::RunTestSeg:
         {
-            this->IdentifyTest();
+            this->StartTest();
+            QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
+            QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+            displayLabel->setPixmap(pixmap);
+            m_DisplayAvg.Add(m_DisplayWatch.elapsed());
             m_DisplayWatch.restart();
         }
         break;
     case STATUS::Game:
         {
             this->StartGame();
+            m_DisplayAvg.Add(m_DisplayWatch.elapsed());
             m_DisplayWatch.restart();
         }
+        break;
+    default:
         break;
     }
 }
 
-void DisplayDlg::StartGame()
-{
-    m_pIdentify = m_pDispBitmap;
-    for (int i = 0; i < 12; i++) {
-        ObjectFound[i] = false;
-    }
-    for (int i = 0; i < MAX_ROBOT_NUM; i++) {
-        robotBk[i] = robotInfor[i];
-        OpprobotBk[i] = OpprobotInfor[i];
-    }
-    ballBk = ballInfor;
-    IdentifyAll();
-    QImage image(DISPLAY_W, DISPLAY_H, QImage::Format_RGB32);
-    QPainter painter(&image);
-    DrawAll(&painter);
-    displayLabel->setPixmap(QPixmap::fromImage(image));
-}
-
+//功能：从摄像头获取一帧图像
+ 
 bool DisplayDlg::GrabSingle()
 {
     Camera *pCamera = Camera::GetInstance();
     if (pCamera->IsGrabbing()) {
-        this->Stop();
+        pCamera->GrabOne(m_pDispBitmap);
+        return true;
     }
-    pCamera->Close();
-    pCamera->Open();
-    // 这里应该实现抓取一帧的功能，与MFC版本保持一致
-    // 由于Qt版本的Camera类可能没有GrabOne方法，暂时返回true
-    pCamera->Close();
-    return true;
+    return false;
 }
 
-void DisplayDlg::IdentifyTest()
-{
-    QImage image(DISPLAY_W, DISPLAY_H, QImage::Format_RGB32);
-    QPainter painter(&image);
-    painter.setPen(Qt::green);
-    painter.drawText(10, 20, "识别测试");
-    displayLabel->setPixmap(QPixmap::fromImage(image));
-}
-
-void DisplayDlg::StartTest()
-{
-    m_pIdentify = m_pDispBitmap;
-    for (int i = 0; i < MAX_ROBOT_NUM; i++) {
-        ObjectFound[i] = false;
-        robotBk[i] = robotInfor[i];
-        OpprobotBk[i] = OpprobotInfor[i];
-    }
-    ballBk = ballInfor;
-    IdentifyAll();
-    QImage image(DISPLAY_W, DISPLAY_H, QImage::Format_RGB32);
-    QPainter painter(&image);
-    DrawAll(&painter);
-    displayLabel->setPixmap(QPixmap::fromImage(image));
-}
-
-bool DisplayDlg::FindPixel(int object, int m, int n, unsigned char *P)
-{
-    ColorDlg* pColorDlg = ColorDlg::getInstance();
-    if (!pColorDlg) return false;
-    const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
-    int R, G, B;
-    int H, S, I;
-    int index = (m + (DISPLAY_H - 1 - n) * DISPLAY_W) * 3;
-    R = *(P + index + 2);
-    G = *(P + index + 1);
-    B = *(P + index + 0);
-    if (R < 0 || R > 255 || G < 0 || G > 255 || B < 0 || B > 255)
-        return false;
-    H = 10 * HLUT[R][G][B];
-    if (H <= 0)
-        return false;
-    if (HSIThreshold[object][1] >= HSIThreshold[object][0])
-    {
-        if (H >= HSIThreshold[object][0] && H <= HSIThreshold[object][1])
-        {
-            S = int(100 * (1 - 3.0 * MIN(R, G, B, 3) / (R + G + B)));
-            if (S >= HSIThreshold[object][2] && S <= HSIThreshold[object][3])
-            {
-                I = (int)((R + G + B) / 3);
-                if (I >= HSIThreshold[object][4] && I <= HSIThreshold[object][5])
-                    return true;
-                else
-                    return false;
-            }
-            else
-                return false;
-        }
-        else
-            return false;
-    }
-    else if (HSIThreshold[object][1] < HSIThreshold[object][0])
-    {
-        if (H >= HSIThreshold[object][0] || H <= HSIThreshold[object][1])
-        {
-            S = int(100 * (1 - 3.0 * MIN(R, G, B, 3) / (R + G + B)));
-            if (S >= HSIThreshold[object][2] && S <= HSIThreshold[object][3])
-            {
-                I = (int)((R + G + B) / 3);
-                if (I >= HSIThreshold[object][4] && I <= HSIThreshold[object][5])
-                    return true;
-                else
-                    return false;
-            }
-            else
-                return false;
-        }
-        else
-            return false;
-    }
-    else
-        return false;
-}
-
-bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart)
-{
-    int sum, sumx, sumy;
-    int x, y, y1;
-    bool spanLeft, spanRight;
-    sum = sumx = sumy = 0;
-    emptyStack();
-    x = Startx;
-    y = Starty;
-    m_xLeft = m_xRight = x;
-    m_yTop = m_yBottom = y;
-    if (!push(x, y)) return 0;
-    while (pop(x, y))
-    {
-        y1 = y;
-        while (y1 >= 0) {
-            if (!FindPixel(tab, x, y1, pStart))
-                break;
-            y1--;
-        }
-        y1++;
-        spanLeft = spanRight = 0;
-        while (y1 < DISPLAY_H)
-        {
-            if (!FindPixel(tab, x, y1, pStart))
-                break;
-
-            int index = (x + (DISPLAY_H - 1 - y1) * DISPLAY_W) * 3;
-            *(pStart + index + 2) = 100;
-            *(pStart + index + 1) = 100;
-            *(pStart + index + 0) = 100;
-            sum++;
-            sumx = sumx + x;
-            sumy = sumy + y1;
-            if (x <= m_xLeft) m_xLeft = x;
-            else if (x >= m_xRight) m_xRight = x;
-            if (y1 <= m_yTop) m_yTop = y1;
-            else if (y1 >= m_yBottom) m_yBottom = y1;
-            if (!spanLeft && x > 0 && FindPixel(tab, x - 1, y1, pStart))
-            {
-                if (!push(x - 1, y1)) return 0;
-                spanLeft = 1;
-            }
-            else if (spanLeft && x > 0 && !FindPixel(tab, x - 1, y1, pStart))
-            {
-                spanLeft = 0;
-            }
-            if (!spanRight && x < DISPLAY_W && FindPixel(tab, x + 1, y1, pStart))
-            {
-                if (!push(x + 1, y1)) return 0;
-                spanRight = 1;
-            }
-            else if (spanRight && x < DISPLAY_W && !FindPixel(tab, x + 1, y1, pStart))
-            {
-                spanRight = 0;
-            }
-            y1++;
-        }
-    }
-
-    if ((sum > SizeMin - 1) && (sum < SizeMax + 1))
-    {
-        if (qAbs((m_xRight - m_xLeft) - (m_yBottom - m_yTop)) > 20)
-            return 0;
-        m_Target[tab].setX(sumx / sum);
-        m_Target[tab].setY(sumy / sum);
-        return 1;
-    }
-    return 0;
-}
-
-void DisplayDlg::IdentifyAll()
-{
-    int NumOpp = 0, NumBall = 0, NumTeam = 0;
-    OppInf TemOpp[30], TemBall[10], TemTeam[30], Tem;
-    
-    for (int i = 0; i < DISPLAY_W; i += 4) {
-        for (int j = 0; j < DISPLAY_H; j += 4) {
-            if (m_IdenOp && FindPixel(7, i, j, m_pIdentify)) {
-                if (NumOpp < 11 && SeachOppAndBall(7, i, j, 30, 300, m_pIdentify)) {
-                    if ((m_TargetN.x >= 0) && (m_TargetN.x < DISPLAY_W) && (m_TargetN.y >= 0) && (m_TargetN.y < DISPLAY_H)) {
-                        TemOpp[NumOpp] = m_TargetN;
-                        NumOpp++;
-                    }
-                }
-            }
-            else if (FindPixel(0, i, j, m_pIdentify)) {
-                if (NumTeam < 20 && SearchTeam(0, i, j, 50, 300, m_pIdentify)) {
-                    if (!patchConnect) {
-                        if ((m_TargetN.x >= 0) && (m_TargetN.x < DISPLAY_W) && (m_TargetN.y >= 0) && (m_TargetN.y < DISPLAY_H)) {
-                            TemTeam[NumTeam] = m_TargetN;
-                            NormalTheta[NumTeam] = m_theta;
-                            NumTeam++;
-                        }
-                    } else {
-                        if ((m_TargetN1.x >= 0) && (m_TargetN1.x < DISPLAY_W) && (m_TargetN1.y >= 0) && (m_TargetN1.y < DISPLAY_H) &&
-                            (m_TargetN2.x >= 0) && (m_TargetN2.x < DISPLAY_W) && (m_TargetN2.y >= 0) && (m_TargetN2.y < DISPLAY_H)) {
-                            TemTeam[NumTeam] = m_TargetN1;
-                            NormalTheta[NumTeam] = m_theta;
-                            NumTeam++;
-                            TemTeam[NumTeam] = m_TargetN2;
-                            NormalTheta[NumTeam] = m_theta;
-                            NumTeam++;
-                        }
-                    }
-                }
-            }
-            else if (NumBall < 5 && FindPixel(6, i, j, m_pIdentify)) {
-                if (SeachOppAndBall(6, i, j, 30, 300, m_pIdentify)) {
-                    if ((m_TargetN.x >= 0) && (m_TargetN.x < DISPLAY_W) && (m_TargetN.y >= 0) && (m_TargetN.y < DISPLAY_H)) {
-                        TemBall[NumBall] = m_TargetN;
-                        NumBall++;
-                    }
-                }
-            }
-        }
-    }
-    
-    for (int i = 0; i < NumTeam; i++) {
-        TeamTarget[i].setX((int)TemTeam[i].x);
-        TeamTarget[i].setY((int)TemTeam[i].y);
-    }
-    
-    IdentiRobo(NumTeam);
-    
-    if (NumOpp <= MAX_ROBOT_NUM) {
-        for (int k = 0; k < NumOpp; k++) {
-            OpprobotInfor[k].x = TemOpp[k].x;
-            OpprobotInfor[k].y = TemOpp[k].y;
-            OpprobotInfor[k].found = true;
-        }
-    } else {
-        for (int k = 0; k < NumOpp - 1; k++) {
-            for (int n = k + 1; n < NumOpp; n++) {
-                if (TemOpp[k].num < TemOpp[n].num) {
-                    Tem = TemOpp[k];
-                    TemOpp[k] = TemOpp[n];
-                    TemOpp[n] = Tem;
-                }
-            }
-        }
-        for (int k = 0; k < MAX_ROBOT_NUM; k++) {
-            OpprobotInfor[k].x = TemOpp[k].x;
-            OpprobotInfor[k].y = TemOpp[k].y;
-            OpprobotInfor[k].found = true;
-        }
-    }
-    
-    if (NumBall >= 1) {
-        for (int i = 1; i < NumBall; i++) {
-            if (TemBall[0].num < TemBall[i].num) {
-                TemBall[0] = TemBall[i];
-            }
-        }
-        ballInfor.x = TemBall[0].x;
-        ballInfor.y = TemBall[0].y;
-        ballInfor.found = true;
-    } else {
-        if (m_BalLo) {
-            BallPosFilter();
-        }
-    }
-}
-
-void DisplayDlg::IdentiRobo(int ObjectCount)
-{
-    int i, j;
-    double temptheta, OrientAngle;
-    QPoint ReferPoint[4];
-    bool blackID[4];
-    int RobotID;
-    
-    for (i = 0; i < ObjectCount; i++) {
-        RobotID = -1;
-        temptheta = 3.1415926 / 2 - atan(0.75) - NormalTheta[i];
-        ReferPoint[0].setX((int)(TeamTarget[i].x() + m_Length * cos(temptheta)));
-        ReferPoint[0].setY((int)(TeamTarget[i].y() + m_Length * sin(temptheta)));
-        ReferPoint[1].setX((int)(TeamTarget[i].x() + m_Length * cos(temptheta + 2 * atan(0.75))));
-        ReferPoint[1].setY((int)(TeamTarget[i].y() + m_Length * sin(temptheta + 2 * atan(0.75))));
-        ReferPoint[2].setX((int)(TeamTarget[i].x() + m_Length * cos(temptheta + 3.1415926)));
-        ReferPoint[2].setY((int)(TeamTarget[i].y() + m_Length * sin(temptheta + 3.1415926)));
-        ReferPoint[3].setX((int)(TeamTarget[i].x() + m_Length * cos(temptheta + 2 * atan(0.75) + 3.1415926)));
-        ReferPoint[3].setY((int)(TeamTarget[i].y() + m_Length * sin(temptheta + 2 * atan(0.75) + 3.1415926)));
-        
-        for (j = 0; j < 4; j++) {
-            blackID[j] = false;
-        }
-        
-        for (j = 0; j < 4; j++) {
-            blackID[j] = FindBlackID(ReferPoint[j].x(), ReferPoint[j].y(), j);
-        }
-        
-        if (blackID[0] && blackID[1]) {
-            OrientAngle = NormalTheta[i] + 3.1415926;
-            RobotID = FindRobotID(ReferPoint[2], ReferPoint[3]);
-        } else if (blackID[2] && blackID[3]) {
-            OrientAngle = NormalTheta[i];
-            RobotID = FindRobotID(ReferPoint[0], ReferPoint[1]);
-        } else if (!blackID[0] && !blackID[1]) {
-            OrientAngle = NormalTheta[i];
-            RobotID = FindRobotIDD(ReferPoint[2], ReferPoint[3]);
-        } else if (!blackID[2] && !blackID[3]) {
-            OrientAngle = NormalTheta[i] + 3.1415926;
-            RobotID = FindRobotIDD(ReferPoint[0], ReferPoint[1]);
-        }
-        
-        if (RobotID >= 0 && RobotID < MAX_ROBOT_NUM) {
-            robotInfor[RobotID].theta = OrientAngle * 180 / 3.1415926;
-            robotInfor[RobotID].x = TeamTarget[i].x();
-            robotInfor[RobotID].y = TeamTarget[i].y();
-            robotInfor[RobotID].found = true;
-            ObjectFound[RobotID] = true;
-        }
-    }
-}
-
-bool DisplayDlg::SeachOppAndBall(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart)
-{
-    int sum, sumx, sumy, x, y, y1;
-    bool spanLeft, spanRight;
-    sum = sumx = sumy = 0;
-    emptyStack();
-    x = Startx;
-    y = Starty;
-    m_xLeft = m_xRight = x;
-    m_yTop = m_yBottom = y;
-    if (!push(x, y)) return 0;
-    while (pop(x, y))
-    {
-        y1 = y;
-        while (FindPixel(tab, x, y1, pStart) && y1 >= 0) y1--;
-        y1++;
-        spanLeft = 0;
-        spanRight = 0;
-        while (FindPixel(tab, x, y1, pStart) && y1 < DISPLAY_H)
-        {
-            int index = (x + (DISPLAY_H - 1 - y1) * DISPLAY_W) * 3;
-            *(pStart + index + 2) = 100;
-            *(pStart + index + 1) = 100;
-            *(pStart + index + 0) = 100;
-            if (x <= m_xLeft) m_xLeft = x;
-            else if (x >= m_xRight) m_xRight = x;
-            if (y1 <= m_yTop) m_yTop = y1;
-            else if (y1 >= m_yBottom) m_yBottom = y1;
-            sum++;
-            sumx = sumx + x;
-            sumy = sumy + y1;
-            if (!spanLeft && x > 0 && FindPixel(tab, x - 1, y1, pStart))
-            {
-                if (!push(x - 1, y1)) return 0;
-                spanLeft = 1;
-            }
-            else if (spanLeft && x > 0 && !FindPixel(tab, x - 1, y1, pStart))
-            {
-                spanLeft = 0;
-            }
-            if (!spanRight && x < DISPLAY_W && FindPixel(tab, x + 1, y1, pStart))
-            {
-                if (!push(x + 1, y1)) return 0;
-                spanRight = 1;
-            }
-            else if (spanRight && x < DISPLAY_W && !FindPixel(tab, x + 1, y1, pStart))
-            {
-                spanRight = 0;
-            }
-            y1++;
-        }
-    }
-    if ((sum > SizeMin - 1) && (sum < SizeMax + 1))
-    {
-        if (tab == BALL)
-        {
-            if ((m_xRight - m_xLeft) < 2 || (m_xRight - m_xLeft) > 15 || (m_yBottom - m_yTop) < 2 || (m_yBottom - m_yTop) > 15)
-                return 0;
-        }
-        m_TargetN.x = sumx / sum;
-        m_TargetN.y = sumy / sum;
-        return 1;
-    }
-    return 0;
-}
-
-bool DisplayDlg::SearchTeam(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart)
-{
-    int sum, sumx, sumy, x, y, y1;
-    bool spanLeft, spanRight;
-    sum = sumx = sumy = 0;
-    emptyStack();
-    x = Startx;
-    y = Starty;
-    m_xLeft = m_xRight = x;
-    m_yTop = m_yBottom = y;
-    m_TargetN1.x = 0;
-    m_TargetN1.y = 0;
-    m_TargetN2.x = 0;
-    m_TargetN2.y = 0;
-    m_theta = 0;
-    if (!push(x, y)) return 0;
-    while (pop(x, y))
-    {
-        y1 = y;
-        while (FindPixel(tab, x, y1, pStart) && y1 >= 0) y1--;
-        y1++;
-        spanLeft = 0;
-        spanRight = 0;
-        while (FindPixel(tab, x, y1, pStart) && y1 < DISPLAY_H)
-        {
-            int index = (x + (DISPLAY_H - 1 - y1) * DISPLAY_W) * 3;
-            *(pStart + index + 2) = 100;
-            *(pStart + index + 1) = 100;
-            *(pStart + index + 0) = 100;
-            if (x <= m_xLeft) m_xLeft = x;
-            else if (x >= m_xRight) m_xRight = x;
-            if (y1 <= m_yTop) m_yTop = y1;
-            else if (y1 >= m_yBottom) m_yBottom = y1;
-            sum++;
-            sumx = sumx + x;
-            sumy = sumy + y1;
-            if (!spanLeft && x > 0 && FindPixel(tab, x - 1, y1, pStart))
-            {
-                if (!push(x - 1, y1)) return 0;
-                spanLeft = 1;
-            }
-            else if (spanLeft && x > 0 && !FindPixel(tab, x - 1, y1, pStart))
-            {
-                spanLeft = 0;
-            }
-            if (!spanRight && x < DISPLAY_W && FindPixel(tab, x + 1, y1, pStart))
-            {
-                if (!push(x + 1, y1)) return 0;
-                spanRight = 1;
-            }
-            else if (spanRight && x < DISPLAY_W && !FindPixel(tab, x + 1, y1, pStart))
-            {
-                spanRight = 0;
-            }
-            y1++;
-        }
-    }
-    if ((sum > SizeMin - 1) && (sum < SizeMax + 1))
-    {
-        if (abs((m_xRight - m_xLeft) - (m_yBottom - m_yTop)) > 20)
-            return 0;
-        if ((m_xRight - m_xLeft) > 3 * (m_yBottom - m_yTop))
-        {
-            patchConnect = true;
-            m_TargetN1.x = sumx / sum;
-            m_TargetN1.y = (m_yTop + m_yBottom) / 2;
-            m_TargetN2.x = sumx / sum;
-            m_TargetN2.y = (m_yTop + m_yBottom) / 2;
-        }
-        else if ((m_yBottom - m_yTop) > 3 * (m_xRight - m_xLeft))
-        {
-            patchConnect = true;
-            m_TargetN1.x = (m_xLeft + m_xRight) / 2;
-            m_TargetN1.y = sumy / sum;
-            m_TargetN2.x = (m_xLeft + m_xRight) / 2;
-            m_TargetN2.y = sumy / sum;
-        }
-        else
-        {
-            patchConnect = false;
-            m_TargetN.x = sumx / sum;
-            m_TargetN.y = sumy / sum;
-        }
-        m_theta = atan2((double)(m_yBottom - m_yTop), (double)(m_xRight - m_xLeft));
-        return 1;
-    }
-    patchConnect = false;
-    return 0;
-}
-
-bool DisplayDlg::FindBlackID(int m, int n, int Num)
-{
-    bool IDCode;
-    int ii, jj;
-    int sumblack;
-    int H = 0;
-    int S = 0;
-    int I = 0;
-    sumblack = 0;
-    for (jj = n - 1; jj <= n + 1; jj++)
-        for (ii = m - 1; ii <= m + 1; ii++)
-        {
-            if (jj < 0 || jj > DISPLAY_H - 1 || ii < 0 || ii > DISPLAY_W - 1) continue;
-            RGBToHS(ii, jj, m_pIdentify, H, S, I);
-            if (!JudgePixel(1, H, S, I)
-                && !JudgePixel(2, H, S, I)
-                && (screenBuffer(ii, jj, m_pIdentify) != 12684))
-            {
-                sumblack++;
-                if (sumblack >= 5) break;
-            }
-        }
-    if (sumblack >= 5) IDCode = 1;
-    else
-    {
-        IDCode = 0;
-        BlackSum[Num] = sumblack;
-    }
-    return IDCode;
-}
-
-int DisplayDlg::FindRobotID(QPoint RP1, QPoint RP2)
-{
-    int roboID, RPID1, RPID2;
-    int ii, jj;
-    int sum1, sum2, sum0;
-    int H = 0;
-    int S = 0;
-    int I = 0;
-    sum1 = sum2 = sum0 = 0;
-    for (jj = RP1.y() - 2; jj <= RP1.y() + 2; jj++)
-        for (ii = RP1.x() - 2; ii <= RP1.x() + 2; ii++)
-        {
-            if (jj < 0 || jj > DISPLAY_H - 1 || ii < 0 || ii > DISPLAY_W - 1) continue;
-            RGBToHS(ii, jj, m_pIdentify, H, S, I);
-            if (JudgePixel(1, H, S, I))
-                sum1++;
-            else if (JudgePixel(2, H, S, I))
-                sum2++;
-            else if (screenBuffer(ii, jj, m_pIdentify) != 12684)
-                sum0++;
-        }
-    RPID1 = JudgeColor(sum1, sum2, sum0);
-    sum1 = sum2 = sum0 = 0;
-    for (jj = RP2.y() - 2; jj <= RP2.y() + 2; jj++)
-        for (ii = RP2.x() - 2; ii <= RP2.x() + 2; ii++)
-        {
-            if (jj < 0 || jj > DISPLAY_H - 1 || ii < 0 || ii > DISPLAY_W - 1) continue;
-            RGBToHS(ii, jj, m_pIdentify, H, S, I);
-            if (JudgePixel(1, H, S, I))
-                sum1++;
-            else if (JudgePixel(2, H, S, I))
-                sum2++;
-            else if (screenBuffer(ii, jj, m_pIdentify) != 12684)
-                sum0++;
-        }
-    RPID2 = JudgeColor(sum1, sum2, sum0);
-    if (RPID1 == 0 && RPID2 == 1) roboID = 0;
-    else if (RPID1 == 1 && RPID2 == 0) roboID = 1;
-    else if (RPID1 == 1 && RPID2 == 1) roboID = 2;
-    else if (RPID1 == 0 && RPID2 == 2) roboID = 3;
-    else if (RPID1 == 2 && RPID2 == 0) roboID = 4;
-    else if (RPID1 == 2 && RPID2 == 2) roboID = 5;
-    else if (RPID1 == 2 && RPID2 == 1) roboID = 6;
-    else if (RPID1 == 1 && RPID2 == 2) roboID = 7;
-    else roboID = -1;
-    return roboID;
-}
-
-int DisplayDlg::FindRobotIDD(QPoint RP1, QPoint RP2)
-{
-    int roboID, RPID1, RPID2;
-    int ii, jj;
-    int sum1, sum2, sum0;
-    int H = 0;
-    int S = 0;
-    int I = 0;
-    sum1 = sum2 = sum0 = 0;
-    for (jj = RP1.y() - 2; jj <= RP1.y() + 2; jj++)
-        for (ii = RP1.x() - 2; ii <= RP1.x() + 2; ii++)
-        {
-            if (jj < 0 || jj > DISPLAY_H - 1 || ii < 0 || ii > DISPLAY_W - 1) continue;
-            RGBToHS(ii, jj, m_pIdentify, H, S, I);
-            if (JudgePixel(1, H, S, I))
-                sum1++;
-            else if (JudgePixel(2, H, S, I))
-                sum2++;
-            else if (screenBuffer(ii, jj, m_pIdentify) != 12684)
-                sum0++;
-        }
-    RPID1 = JudgeColor(sum1, sum2, sum0);
-    sum1 = sum2 = sum0 = 0;
-    for (jj = RP2.y() - 2; jj <= RP2.y() + 2; jj++)
-        for (ii = RP2.x() - 2; ii <= RP2.x() + 2; ii++)
-        {
-            if (jj < 0 || jj > DISPLAY_H - 1 || ii < 0 || ii > DISPLAY_W - 1) continue;
-            RGBToHS(ii, jj, m_pIdentify, H, S, I);
-            if (JudgePixel(1, H, S, I))
-                sum1++;
-            else if (JudgePixel(2, H, S, I))
-                sum2++;
-            else if (screenBuffer(ii, jj, m_pIdentify) != 12684)
-                sum0++;
-        }
-    RPID2 = JudgeColor(sum1, sum2, sum0);
-    if (RPID1 == 1 && RPID2 == 0) roboID = 8;
-    else if (RPID1 == 0 && RPID2 == 1) roboID = 9;
-    else if (RPID1 == 2 && RPID2 == 0) roboID = 10;
-    else roboID = -1;
-    return roboID;
-}
-
-void DisplayDlg::BallPosFilter()
-{
-    if (ballInfor.x > ballBk.x)
-    {
-        ballBk.x = ballInfor.x;
-        ballBk.y = ballInfor.y;
-    }
-    else
-    {
-        ballInfor.x = ballBk.x;
-        ballInfor.y = ballBk.y;
-    }
-}
-
-int DisplayDlg::screenBuffer(int m, int n, unsigned char *P)
-{
-    int r, g, b, data;
-    int index = (m + (DISPLAY_H - 1 - n) * DISPLAY_W) * 3;
-    r = *(P + index + 2) / 8;
-    g = *(P + index + 1) / 8;
-    b = *(P + index + 0) / 8;
-    data = ((r & 0x1f) << 10 | (g & 0x1f) << 5 | (b & 0x1f));
-    return data;
-}
-
-bool DisplayDlg::JudgePixel(int object, int H, int S, int I)
-{
-    ColorDlg* pColorDlg = ColorDlg::getInstance();
-    if (!pColorDlg) return false;
-    const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
-    if (H == 0)
-        return false;
-    else
-        if (HSIThreshold[object][1] >= HSIThreshold[object][0])
-        {
-            if (H >= HSIThreshold[object][0] && H <= HSIThreshold[object][1] && S >= HSIThreshold[object][2] && S <= HSIThreshold[object][3] && I >= HSIThreshold[object][4] && I <= HSIThreshold[object][5])
-                return true;
-            else
-                return false;
-        }
-        else
-            if (HSIThreshold[object][1] < HSIThreshold[object][0])
-            {
-                if (H >= HSIThreshold[object][0] || H <= HSIThreshold[object][1] && S >= HSIThreshold[object][2] && S <= HSIThreshold[object][3] && I >= HSIThreshold[object][4] && I <= HSIThreshold[object][5])
-                    return true;
-                else
-                    return false;
-            }
-            else
-                return false;
-}
-
-int DisplayDlg::JudgeColor(int a, int b, int c)
-{
-    if (a > b)
-        return 0;
-    else
-        return 1;
-}
-
-void DisplayDlg::emptyStack()
-{
-    int x, y;
-    while (pop(x, y));
-}
-
-bool DisplayDlg::push(int x, int y)
-{
-    if (stackPointer < StackSize - 1)
-    {
-        stackPointer++;
-        stackx[stackPointer] = x;
-        stacky[stackPointer] = y;
-        return 1;
-    }
-    else
-    {
-        return 0;
-    }
-}
-
+//功能：从栈中弹出一个坐标点
+ 
 bool DisplayDlg::pop(int &x, int &y)
 {
     if (stackPointer > 0)
     {
+        stackPointer--;
         x = stackx[stackPointer];
         y = stacky[stackPointer];
-        stackPointer--;
-        return 1;
+        return true;
     }
     else
-    {
-        return 0;
-    }
+        return false;
 }
 
+// 功能：向栈中压入一个坐标点
+bool DisplayDlg::push(int x, int y)
+{
+    if (stackPointer < StackSize)
+    {
+        stackx[stackPointer] = x;
+        stacky[stackPointer] = y;
+        stackPointer++;
+        return true;
+    }
+    else
+        return false;
+}
+
+// 功能：清空坐标点栈
+void DisplayDlg::emptyStack()
+{
+    stackPointer = 0;
+}
+
+//功能：将RGB颜色转换为HSI颜色空间
+ 
 void DisplayDlg::RGBToHS(int m, int n, unsigned char *P, int &H, int &S, int &I)
 {
     int R, G, B;
-    int index = (m + (DISPLAY_H - 1 - n) * DISPLAY_W) * 3;
+    int index = (n * m_ImageSize.width() + m) * 3;
     R = *(P + index + 2);
     G = *(P + index + 1);
     B = *(P + index + 0);
@@ -1122,23 +530,30 @@ void DisplayDlg::RGBToHS(int m, int n, unsigned char *P, int &H, int &S, int &I)
     I = (int)(R + G + B) / 3;
 }
 
+// 功能：绘制足球场背景、机器人和足球
+ 
 void DisplayDlg::DrawAll(QPainter *painter)
 {
+    // 绘制足球场背景
+    painter->drawImage(0, 0, m_groundImage);
+
     // 绘制机器人
     DrawRobot(painter);
-    
+
     // 绘制对手
     DrawOpp(painter);
-    
+
     // 绘制球
     DrawBall(painter);
 }
 
+//功能：绘制对方机器人
+ 
 void DisplayDlg::DrawOpp(QPainter *painter)
 {
     painter->setPen(QPen(Qt::magenta, 1));
     painter->setBrush(QBrush(Qt::green));
-    
+
     for (int i = 0; i < MAX_ROBOT_NUM; i++)
     {
         if (OpprobotInfor[i].found)
@@ -1148,7 +563,7 @@ void DisplayDlg::DrawOpp(QPainter *painter)
             int theta = (int)OpprobotInfor[i].theta;
             if (theta < 0) theta += 360;
             if (theta > 359) continue;
-            
+
             // 绘制机器人形状
             painter->drawLine(x + robot_xy[theta][0][0], y + robot_xy[theta][0][1],
                               x + robot_xy[theta][1][0], y + robot_xy[theta][1][1]);
@@ -1164,7 +579,7 @@ void DisplayDlg::DrawOpp(QPainter *painter)
                               x + robot_xy[theta][10][0], y + robot_xy[theta][10][1]);
             painter->drawLine(x + robot_xy[theta][4][0], y + robot_xy[theta][4][1],
                               x + robot_xy[theta][11][0], y + robot_xy[theta][11][1]);
-            
+
             // 绘制编号
             if (x - 4 >= 0 && y - 5 >= 0)
             {
@@ -1174,11 +589,13 @@ void DisplayDlg::DrawOpp(QPainter *painter)
     }
 }
 
+// 功能：绘制足球位置
+ 
 void DisplayDlg::DrawBall(QPainter *painter)
 {
-    painter->setPen(QPen(QColor(255, 128, 0), 1));
-    painter->setBrush(QBrush(QColor(255, 128, 0)));
-    
+    painter->setPen(QPen(Qt::red, 1));
+    painter->setBrush(QBrush(Qt::red));
+
     if (ballInfor.found)
     {
         int x = (int)(ballInfor.x * 2.5) + 45;
@@ -1187,10 +604,12 @@ void DisplayDlg::DrawBall(QPainter *painter)
     }
 }
 
+//功能：绘制己方机器人
+ 
 void DisplayDlg::DrawRobot(QPainter *painter)
 {
     painter->setPen(QPen(Qt::yellow, 1));
-    
+
     for (int i = 0; i < MAX_ROBOT_NUM; i++)
     {
         if (robotInfor[i].found)
@@ -1200,7 +619,7 @@ void DisplayDlg::DrawRobot(QPainter *painter)
             int theta = (int)robotInfor[i].theta;
             if (theta < 0) theta += 360;
             if (theta > 359) continue;
-            
+
             // 绘制机器人形状
             painter->drawLine(x + robot_xy[theta][0][0], y + robot_xy[theta][0][1],
                               x + robot_xy[theta][1][0], y + robot_xy[theta][1][1]);
@@ -1216,7 +635,7 @@ void DisplayDlg::DrawRobot(QPainter *painter)
                               x + robot_xy[theta][10][0], y + robot_xy[theta][10][1]);
             painter->drawLine(x + robot_xy[theta][4][0], y + robot_xy[theta][4][1],
                               x + robot_xy[theta][11][0], y + robot_xy[theta][11][1]);
-            
+
             // 绘制编号
             if (x - 4 >= 0 && y - 5 >= 0)
             {
@@ -1226,87 +645,628 @@ void DisplayDlg::DrawRobot(QPainter *painter)
     }
 }
 
+ //功能：计算三个或四个值中的最小值
+int DisplayDlg::MIN(int a, int b, int c, int n)
+{
+    int minvalue = 255;
+    int tem;
+    if (n < 3)
+        return 0;
+    if (n == 3)
+    {
+        tem = (a < b) ? a : b;
+        minvalue = (tem < c) ? tem : c;
+    }
+    else if (n == 4)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            minvalue = (minvalue < a) ? minvalue : a;
+            minvalue = (minvalue < b) ? minvalue : b;
+            minvalue = (minvalue < c) ? minvalue : c;
+        }
+    }
+    return minvalue;
+}
+
+//功能：计算图像点的灰度值
+int DisplayDlg::screenBuffer(int m, int n, unsigned char *P)
+{
+    int R, G, B;
+    int index = (n * m_ImageSize.width() + m) * 3;
+    R = *(P + index + 2);
+    G = *(P + index + 1);
+    B = *(P + index + 0);
+    return (R * 30 + G * 60 + B * 10) / 100;
+}
+
+//功能：判断像素是否符合指定对象的颜色阈值
+ 
+bool DisplayDlg::JudgePixel(int object, int H, int S, int I)
+{
+    ColorDlg *pColorDlg = ColorDlg::getInstance();
+    const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
+
+    if (HSIThreshold[object][1] > HSIThreshold[object][0])
+    {
+        if (H >= HSIThreshold[object][0] && H <= HSIThreshold[object][1] &&
+            S >= HSIThreshold[object][2] && S <= HSIThreshold[object][3] &&
+            I >= HSIThreshold[object][4] && I <= HSIThreshold[object][5])
+            return true;
+        else
+            return false;
+    }
+    else if (HSIThreshold[object][1] < HSIThreshold[object][0])
+    {
+        if ((H >= HSIThreshold[object][0] || H <= HSIThreshold[object][1]) &&
+            S >= HSIThreshold[object][2] && S <= HSIThreshold[object][3] &&
+            I >= HSIThreshold[object][4] && I <= HSIThreshold[object][5])
+            return true;
+        else
+            return false;
+    }
+    return false;
+}
+
+
+ // 功能：判断像素颜色所属的对象类别
+ 
+int DisplayDlg::JudgeColor(int a, int b, int c)
+{
+    int obj = -1;
+    int H, S, I;
+    int minobj = 100;
+    ColorDlg *pColorDlg = ColorDlg::getInstance();
+    const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
+    for (int i = 0; i <= 10; i++)
+    {
+        I = (a + b + c) / 3;
+        S = (100 * (abs(a - b) + abs(b - c) + abs(c - a))) / (2 * (a + b + c));
+        if (S < 10)
+            S = 0;
+        if (I < 20)
+        {
+            if (S <= 20 && S >= 15)
+            {
+                obj = 10;
+                return obj;
+            }
+            else
+                return -1;
+        }
+        for (int j = 0; j < 6; j++)
+        {
+            if (HSIThreshold[j][1] > HSIThreshold[j][0])
+            {
+                if (H >= HSIThreshold[j][0] && H <= HSIThreshold[j][1] &&
+                    S >= HSIThreshold[j][2] && S <= HSIThreshold[j][3] &&
+                    I >= HSIThreshold[j][4] && I <= HSIThreshold[j][5])
+                {
+                    if (minobj > j)
+                    {
+                        minobj = j;
+                    }
+                }
+            }
+            else if (HSIThreshold[j][1] < HSIThreshold[j][0])
+            {
+                if ((H >= HSIThreshold[j][0] || H <= HSIThreshold[j][1]) &&
+                    S >= HSIThreshold[j][2] && S <= HSIThreshold[j][3] &&
+                    I >= HSIThreshold[j][4] && I <= HSIThreshold[j][5])
+                {
+                    if (minobj > j)
+                    {
+                        minobj = j;
+                    }
+                }
+            }
+        }
+    }
+    obj = minobj;
+    return obj;
+}
+
+// 功能：查找符合目标对象颜色的像素
+ 
+bool DisplayDlg::FindPixel(int object, int m, int n, unsigned char *P)
+{
+    int H, S, I;
+    RGBToHS(m, n, P, H, S, I);
+    return JudgePixel(object, H, S, I);
+}
+
+// 功能：使用LUT搜索并识别目标对象
+ 
+bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart)
+{
+    int x, y;
+    int startindex, endindex;
+    int count = 0;
+    int color = 0;
+    int m = m_ImageSize.width();
+    int n = m_ImageSize.height();
+    emptyStack();
+    startindex = Starty * m + Startx;
+    endindex = startindex;
+    if (pStart[startindex] != 0)
+        return false;
+    push(Startx, Starty);
+    while (pop(x, y))
+    {
+        startindex = y * m + x;
+        pStart[startindex] = 255;
+        count++;
+
+        if (x < m_xLeft + 4)
+        {
+            m_xLeft = x - 4;
+            color++;
+        }
+        if (x > m_xRight - 4)
+        {
+            m_xRight = x + 4;
+            color++;
+        }
+        if (y < m_yTop + 4)
+        {
+            m_yTop = y - 4;
+            color++;
+        }
+        if (y > m_yBottom - 4)
+        {
+            m_yBottom = y + 4;
+            color++;
+        }
+
+        if (x > 0 && pStart[startindex - 1] == 0 && FindPixel(tab, x - 1, y, pStart))
+        {
+            push(x - 1, y);
+            pStart[startindex - 1] = 254;
+        }
+        if (x < m - 1 && pStart[startindex + 1] == 0 && FindPixel(tab, x + 1, y, pStart))
+        {
+            push(x + 1, y);
+            pStart[startindex + 1] = 254;
+        }
+        if (y > 0 && pStart[startindex - m] == 0 && FindPixel(tab, x, y - 1, pStart))
+        {
+            push(x, y - 1);
+            pStart[startindex - m] = 254;
+        }
+        if (y < n - 1 && pStart[startindex + m] == 0 && FindPixel(tab, x, y + 1, pStart))
+        {
+            push(x, y + 1);
+            pStart[startindex + m] = 254;
+        }
+    }
+    if (count < SizeMin || count > SizeMax || color < 2)
+    {
+        return false;
+    }
+    else
+    {
+        return true;
+    }
+}
+
+//功能：启动目标识别
+
+void DisplayDlg::StartTest()
+{
+    IdentifyAll();
+}
+
+//功能：识别足球和机器人
+void DisplayDlg::IdentifyAll()
+{
+    int i, j;
+    int xLeftTem, xRightTem, yTopTem, yBottomTem;
+    int m = m_ImageSize.width();
+    int n = m_ImageSize.height();
+    int index;
+    int H, S, I;
+
+    for (i = 0; i < MAX_ROBOT_NUM; i++)
+    {
+        ObjectFound[i] = false;
+    }
+    ObjectFound[10] = false;
+    ObjectFound[11] = false;
+
+    m_xLeft = m;
+    m_xRight = 0;
+    m_yTop = n;
+    m_yBottom = 0;
+
+    unsigned char *m_pTestBitmap = new unsigned char[m * n * 3];
+    memcpy(m_pTestBitmap, m_pDispBitmap, m * n * 3);
+    unsigned char *pTest = m_pTestBitmap;
+
+    ColorDlg *pColorDlg = ColorDlg::getInstance();
+    const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
+
+    for (j = 0; j < n; j++)
+    {
+        for (i = 0; i < m; i++)
+        {
+            RGBToHS(i, j, pTest, H, S, I);
+
+            if (H >= HSIThreshold[0][0] && H <= HSIThreshold[0][1] &&
+                S >= HSIThreshold[0][2] && S <= HSIThreshold[0][3] &&
+                I >= HSIThreshold[0][4] && I <= HSIThreshold[0][5])
+            {
+                xLeftTem = m_xLeft;
+                xRightTem = m_xRight;
+                yTopTem = m_yTop;
+                yBottomTem = m_yBottom;
+                m_xLeft = m;
+                m_xRight = 0;
+                m_yTop = n;
+                m_yBottom = 0;
+
+                if (IdentifySearchLUT(0, i, j, 30, 200, pTest))
+                {
+                    int x = (m_xLeft + m_xRight) / 2;
+                    int y = (m_yTop + m_yBottom) / 2;
+                    ballInfor.x = (double)(x - 45) / 2.5;
+                    ballInfor.y = (double)(y - 15) / 2.5;
+                    ballInfor.found = true;
+                    ballInfor.theta = 0;
+                    ObjectFound[10] = true;
+                }
+                else
+                {
+                    m_xLeft = xLeftTem;
+                    m_xRight = xRightTem;
+                    m_yTop = yTopTem;
+                    m_yBottom = yBottomTem;
+                }
+            }
+        }
+    }
+
+    delete m_pTestBitmap;
+}
+
+// 功能：过滤足球位置，防止抖动
+ 
+void DisplayDlg::BallPosFilter()
+{
+    if (!ballInfor.found)
+        return;
+
+    if (ballBk.found)
+    {
+        double deltx = ballInfor.x - ballBk.x;
+        double delty = ballInfor.y - ballBk.y;
+        double delt = sqrt(deltx * deltx + delty * delty);
+        if (delt > 15)
+        {
+            ballInfor.x = ballBk.x;
+            ballInfor.y = ballBk.y;
+        }
+    }
+    ballBk = ballInfor;
+}
+
+// 功能：识别己方和对方机器人
+
+void DisplayDlg::IdentiRobo(int ObjectCount)
+{
+    int i, j;
+    int m = m_ImageSize.width();
+    int n = m_ImageSize.height();
+    int index;
+    int H, S, I;
+    int xLeftTem, xRightTem, yTopTem, yBottomTem;
+    int robotNum = 0;
+
+    for (i = 0; i < MAX_ROBOT_NUM; i++)
+    {
+        robotInfor[i].found = false;
+        OpprobotInfor[i].found = false;
+    }
+
+    unsigned char *m_pTestBitmap = new unsigned char[m * n * 3];
+    memcpy(m_pTestBitmap, m_pDispBitmap, m * n * 3);
+    unsigned char *pTest = m_pTestBitmap;
+
+    ColorDlg *pColorDlg = ColorDlg::getInstance();
+    const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
+
+    for (j = 0; j < n; j++)
+    {
+        for (i = 0; i < m; i++)
+        {
+            RGBToHS(i, j, pTest, H, S, I);
+
+            if (H >= HSIThreshold[ObjectCount][0] && H <= HSIThreshold[ObjectCount][1] &&
+                S >= HSIThreshold[ObjectCount][2] && S <= HSIThreshold[ObjectCount][3] &&
+                I >= HSIThreshold[ObjectCount][4] && I <= HSIThreshold[ObjectCount][5])
+            {
+                xLeftTem = m_xLeft;
+                xRightTem = m_xRight;
+                yTopTem = m_yTop;
+                yBottomTem = m_yBottom;
+                m_xLeft = m;
+                m_xRight = 0;
+                m_yTop = n;
+                m_yBottom = 0;
+
+                if (IdentifySearchLUT(ObjectCount, i, j, 30, 300, pTest))
+                {
+                    int x = (m_xLeft + m_xRight) / 2;
+                    int y = (m_yTop + m_yBottom) / 2;
+
+                    if (ObjectCount == 1)
+                    {
+                        if (robotNum < MAX_ROBOT_NUM)
+                        {
+                            robotInfor[robotNum].x = (double)(x - 45) / 2.5;
+                            robotInfor[robotNum].y = (double)(y - 15) / 2.5;
+                            robotInfor[robotNum].found = true;
+                            robotInfor[robotNum].theta = 0;
+                            robotInfor[robotNum].num = robotNum;
+                            ObjectFound[robotNum] = true;
+                            robotNum++;
+                        }
+                    }
+                    else if (ObjectCount == 2)
+                    {
+                        if (m_IdenOp && robotNum < MAX_ROBOT_NUM)
+                        {
+                            OpprobotInfor[robotNum].x = (double)(x - 45) / 2.5;
+                            OpprobotInfor[robotNum].y = (double)(y - 15) / 2.5;
+                            OpprobotInfor[robotNum].found = true;
+                            OpprobotInfor[robotNum].num = robotNum;
+                            robotNum++;
+                        }
+                    }
+                }
+                else
+                {
+                    m_xLeft = xLeftTem;
+                    m_xRight = xRightTem;
+                    m_yTop = yTopTem;
+                    m_yBottom = yBottomTem;
+                }
+            }
+        }
+    }
+
+    delete m_pTestBitmap;
+}
+
+// 功能：根据位置变化查找机器人ID
+ 
+int DisplayDlg::FindRobotID(QPoint RP1, QPoint RP2)
+{
+    int i;
+    double theta1 = 0, theta2 = 0;
+    double deltx, delty;
+
+    for (i = 0; i < MAX_ROBOT_NUM; i++)
+    {
+        if (robotBk[i].found)
+        {
+            deltx = robotInfor[i].x - robotBk[i].x;
+            delty = robotInfor[i].y - robotBk[i].y;
+            theta2 = atan2(delty, deltx) * 180 / 3.1415926;
+            if (theta2 < 0) theta2 += 360;
+            theta1 = robotBk[i].theta;
+            if (abs((int)(theta1 - theta2)) < 90)
+            {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+//功能：根据距离查找机器人ID
+ 
+int DisplayDlg::FindRobotIDD(QPoint RP1, QPoint RP2)
+{
+    int i;
+    double deltx, delty;
+
+    for (i = 0; i < MAX_ROBOT_NUM; i++)
+    {
+        if (robotInfor[i].found)
+        {
+            deltx = robotInfor[i].x - robotBk[i].x;
+            delty = robotInfor[i].y - robotBk[i].y;
+            m_theta = atan2(delty, deltx);
+            m_Length = sqrt(deltx * deltx + delty * delty);
+            if (m_Length < 2)
+            {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+// 功能：查找黑色区域
+ 
+bool DisplayDlg::FindBlackID(int m, int n, int Num)
+{
+    int i;
+    int R, G, B;
+    int index = (n * m_ImageSize.width() + m) * 3;
+    R = m_pDispBitmap[index + 2];
+    G = m_pDispBitmap[index + 1];
+    B = m_pDispBitmap[index + 0];
+    int I = (R + G + B) / 3;
+    int S = (100 * (abs(R - G) + abs(G - B) + abs(B - R))) / (2 * (R + G + B));
+
+    if (S < 20 && I < 30)
+    {
+        BlackSum[Num]++;
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+// 功能：搜索对手和足球
+ 
+bool DisplayDlg::SeachOppAndBall(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart)
+{
+    int x, y;
+    int startindex;
+    int count = 0;
+    int m = m_ImageSize.width();
+    int n = m_ImageSize.height();
+    emptyStack();
+    startindex = Starty * m + Startx;
+    if (pStart[startindex] != 0)
+        return false;
+    push(Startx, Starty);
+    while (pop(x, y))
+    {
+        startindex = y * m + x;
+        pStart[startindex] = 255;
+        count++;
+
+        if (x > 0 && pStart[startindex - 1] == 0 && FindPixel(tab, x - 1, y, pStart))
+        {
+            push(x - 1, y);
+            pStart[startindex - 1] = 254;
+        }
+        if (x < m - 1 && pStart[startindex + 1] == 0 && FindPixel(tab, x + 1, y, pStart))
+        {
+            push(x + 1, y);
+            pStart[startindex + 1] = 254;
+        }
+        if (y > 0 && pStart[startindex - m] == 0 && FindPixel(tab, x, y - 1, pStart))
+        {
+            push(x, y - 1);
+            pStart[startindex - m] = 254;
+        }
+        if (y < n - 1 && pStart[startindex + m] == 0 && FindPixel(tab, x, y + 1, pStart))
+        {
+            push(x, y + 1);
+            pStart[startindex + m] = 254;
+        }
+    }
+    if (count < SizeMin || count > SizeMax)
+    {
+        return false;
+    }
+    else
+    {
+        return true;
+    }
+}
+
+//功能：搜索队伍
+ 
+bool DisplayDlg::SearchTeam(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart)
+{
+    int x, y;
+    int startindex;
+    int count = 0;
+    int m = m_ImageSize.width();
+    int n = m_ImageSize.height();
+    emptyStack();
+    startindex = Starty * m + Startx;
+    if (pStart[startindex] != 0)
+        return false;
+    push(Startx, Starty);
+    while (pop(x, y))
+    {
+        startindex = y * m + x;
+        pStart[startindex] = 255;
+        count++;
+
+        if (x > 0 && pStart[startindex - 1] == 0 && FindPixel(tab, x - 1, y, pStart))
+        {
+            push(x - 1, y);
+            pStart[startindex - 1] = 254;
+        }
+        if (x < m - 1 && pStart[startindex + 1] == 0 && FindPixel(tab, x + 1, y, pStart))
+        {
+            push(x + 1, y);
+            pStart[startindex + 1] = 254;
+        }
+        if (y > 0 && pStart[startindex - m] == 0 && FindPixel(tab, x, y - 1, pStart))
+        {
+            push(x, y - 1);
+            pStart[startindex - m] = 254;
+        }
+        if (y < n - 1 && pStart[startindex + m] == 0 && FindPixel(tab, x, y + 1, pStart))
+        {
+            push(x, y + 1);
+            pStart[startindex + m] = 254;
+        }
+    }
+    if (count < SizeMin || count > SizeMax)
+    {
+        return false;
+    }
+    else
+    {
+        return true;
+    }
+}
+
+//功能：测试识别功能
+ 
+void DisplayDlg::IdentifyTest()
+{
+}
+
+//功能：开始比赛，进行目标识别和绘制
+ 
+void DisplayDlg::StartGame()
+{
+    // 比赛开始，需要进行目标识别和绘制
+    // 定时器会触发onTimer，持续更新图像
+}
+
+//功能：分析矩形区域内的颜色
+ 
 void DisplayDlg::ColorAnalyse(const QRect &rect, int yi[], std::vector<QPoint> &vecColorSet)
 {
+    vecColorSet.clear();
+    int x1 = rect.left();
+    int y1 = rect.top();
+    int x2 = rect.right();
+    int y2 = rect.bottom();
     int i, j;
-    int R, G, B;
-    double S, H;
-    int I;
-
-    unsigned char* pRGB;
-    this->ShowSingle();
-    pRGB = m_pDispSingle;
-    QRect rect1;
-
-    rect1.setLeft((m_Rect.left() + 1) + (int)((double)(m_Rect.right() - m_Rect.left() - 1) / 250.0 * rect.left()));
-    rect1.setRight((m_Rect.left() + 1) + (int)((double)(m_Rect.right() - m_Rect.left() - 1) / 250.0 * rect.right()));
-    rect1.setTop((m_Rect.top() + 1) + (int)((double)(m_Rect.bottom() - m_Rect.top() - 1) / 220.0 * rect.top()));
-    rect1.setBottom((m_Rect.top() + 1) + (int)((double)(m_Rect.bottom() - m_Rect.top() - 1) / 220.0 * rect.bottom()));
-    
-    for (j = rect1.top(); j < rect1.bottom(); j++)
+    int H, S, I;
+    int count = 0;
+    for (j = y1; j <= y2; j++)
     {
-        for (i = rect1.left(); i < rect1.right(); i++)
+        for (i = x1; i <= x2; i++)
         {
-            int index = (j * DISPLAY_W + i) * 3;
-            R = pRGB[index + 2];
-            G = pRGB[index + 1];
-            B = pRGB[index];
-            S = 1 - 3.0 * MIN(R, G, B, 3) / (R + G + B);
-            H = HLUT[R][G][B] * 3.1415926 / 180.0;
-            I = (int)(R + G + B) / 3;
-            yi[I]++;
-            vecColorSet.push_back(QPoint(int(100 * S * cos(H) + 100), int(100 * S * sin(H) + 100)));
+            RGBToHS(i, j, m_pDispSingle, H, S, I);
+            if (H >= yi[0] && H <= yi[1] && S >= yi[2] && S <= yi[3] && I >= yi[4] && I <= yi[5])
+            {
+                vecColorSet.push_back(QPoint(i, j));
+                count++;
+            }
         }
     }
 }
 
+// 功能：分析点集合内的颜色
+ 
 void DisplayDlg::ColorAnalyse(const std::vector<QPoint> &pts, int yi[], std::vector<QPoint> &vecColorSet)
 {
-    if (pts.size() < 3)
+    vecColorSet.clear();
+    int H, S, I;
+    for (int i = 0; i < pts.size(); i++)
     {
-        return;
-    }
-    int i, j;
-    int R, G, B;
-    double S, H;
-    int I;
-    unsigned char* pRGB;
-    this->GrabSingle();
-    pRGB = m_pDispSingle;
-    
-    for (j = 0; j < DISPLAY_H; j++)
-    {
-        for (i = 0; i < DISPLAY_W; i++)
+        int x = pts[i].x();
+        int y = pts[i].y();
+        RGBToHS(x, y, m_pDispSingle, H, S, I);
+        if (H >= yi[0] && H <= yi[1] && S >= yi[2] && S <= yi[3] && I >= yi[4] && I <= yi[5])
         {
-            int index = (j * DISPLAY_W + i) * 3;
-            R = pRGB[index + 2];
-            G = pRGB[index + 1];
-            B = pRGB[index];
-            S = 1 - 3.0 * MIN(R, G, B, 3) / (R + G + B);
-            H = HLUT[R][G][B] * 3.1415926 / 180.0;
-            I = (int)(R + G + B) / 3;
-            yi[I]++;
-            vecColorSet.push_back(QPoint(int(100 * S * cos(H) + 100), int(100 * S * sin(H) + 100)));
+            vecColorSet.push_back(QPoint(x, y));
         }
     }
-}
-
-int DisplayDlg::MIN(int R, int G, int B, int N)
-{
-    int temp;
-    if (N == 3)
-    {
-        if (R <= G && R <= B)
-            temp = R;
-        else if (G <= R && G <= B)
-            temp = G;
-        else if (B <= R && B <= G)
-            temp = B;
-    }
-    else if (N == 2)
-    {
-        if (R <= G) temp = R;
-        else temp = G;
-    }
-    return temp;
 }

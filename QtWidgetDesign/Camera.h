@@ -1,6 +1,18 @@
 #pragma once
 
 #include <QString>
+#include <opencv2/opencv.hpp>
+
+/*
+* Camera.h - 相机操作和参数管理类头文件
+* 
+* 功能：
+* 1. 定义相机操作的接口和参数管理
+* 2. 提供相机打开、关闭、开始/停止抓取的方法
+* 3. 管理相机参数（亮度、增益、对比度、快门、RGB通道）
+* 4. 提供从配置文件读取和保存相机参数的方法
+* 5. 支持实际相机图像捕获和数据转换
+*/
 
 class Camera
 {
@@ -52,4 +64,6 @@ private:
     bool m_isOpen;
     bool m_isGrabbing;
     bool m_isDeviceRemoved;
+    
+    cv::VideoCapture* m_capture;
 };

@@ -1,10 +1,11 @@
-/*
+﻿/*
 * 5v5比赛对话框源文件
 * 写作人 李青
 * 功能 5v5比赛控制界面逻辑实现，包含开球类型、阵型布置、点球及战术选择功能响应。
 * 未完成
 */
 #include "MatchDlg_5vs5.h"
+#include "Debug.h"
 
 MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
     : QWidget(parent)
@@ -38,17 +39,19 @@ void MatchDlg_5vs5::initUI()
     
     // 创建主布局
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(10, 10, 10, 10);
-    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(20, 0, 20, 20);
+    mainLayout->setSpacing(15);
     
     // 创建主控制布局
     QVBoxLayout *controlLayout = new QVBoxLayout();
-    controlLayout->setSpacing(15);
+    // 设置控件之间间隔为18像素，让内容排列更松散
+    controlLayout->setSpacing(18);
     
     // 标题 "5vs5比赛控制"
     QLabel *titleLabel = new QLabel("5vs5比赛控制", this);
     titleLabel->setFont(font);
     controlLayout->addWidget(titleLabel);
+    controlLayout->setAlignment(titleLabel, Qt::AlignTop);
     
     // 单双后卫
     QHBoxLayout *danShuangLayout = new QHBoxLayout();
@@ -242,15 +245,6 @@ void MatchDlg_5vs5::initUI()
     
     mainLayout->addLayout(controlLayout);
     
-    // 输出区域
-    QLabel *outputLabel = new QLabel(this);
-    outputLabel->setStyleSheet("QLabel { background-color: #f0f0f0; border: 1px solid black; font-family: Consolas; font-size: 10pt; }");
-    outputLabel->setFont(font);
-    outputLabel->setText("输出区域:");
-    outputLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    outputLabel->setFixedHeight(100);
-    mainLayout->addWidget(outputLabel);
-    
     // 连接信号槽
     connect(btnStartMatch, SIGNAL(clicked()), this, SLOT(onButtonStart()));
     connect(btnStopMatch, SIGNAL(clicked()), this, SLOT(onButtonStop()));
@@ -290,6 +284,11 @@ void MatchDlg_5vs5::onButtonStop()
 void MatchDlg_5vs5::onStrategyChanged(int index)
 {
     // TODO: 策略选择变化
+    if (index == 0) {
+        Debug::get()->print(L"Strategy_1");
+    } else if (index == 1) {
+        Debug::get()->print(L"Strategy_2");
+    }
 }
 
 void MatchDlg_5vs5::onButtonPrepare()

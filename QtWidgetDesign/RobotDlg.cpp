@@ -111,12 +111,12 @@ void RobotDlg::initUI()
     
     // 创建主布局
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(10, 10, 10, 10);
-    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(20, 0, 20, 20);
+    mainLayout->setSpacing(15);
     
     // 创建顶部布局（左侧显示区域 + 右侧控制区域）
     QHBoxLayout *topLayout = new QHBoxLayout();
-    topLayout->setSpacing(20);
+    topLayout->setSpacing(15);
     
     // 左侧显示区域
     QLabel *displayLabel = new QLabel(this);
@@ -126,19 +126,21 @@ void RobotDlg::initUI()
     
     // 右侧控制区域
     QVBoxLayout *controlLayout = new QVBoxLayout();
-    controlLayout->setSpacing(15);
+    // 设置控件之间间隔为12像素，让内容排列更松散
+    controlLayout->setSpacing(12);
     
     // 标题 "调车"
     QLabel *titleLabel = new QLabel("调车", this);
     titleLabel->setFont(font);
     controlLayout->addWidget(titleLabel);
+    controlLayout->setAlignment(titleLabel, Qt::AlignTop);
     
     // 车号设置
     QGroupBox *carNumGroup = new QGroupBox("车号设置", this);
     carNumGroup->setFont(font);
     
     QVBoxLayout *carNumLayout = new QVBoxLayout(carNumGroup);
-    carNumLayout->setContentsMargins(20, 20, 20, 20);
+    carNumLayout->setContentsMargins(10, 10, 10, 10);
     carNumLayout->setSpacing(10);
     
     QHBoxLayout *oldNumLayout = new QHBoxLayout();
@@ -170,14 +172,15 @@ void RobotDlg::initUI()
     carNumLayout->addWidget(btnChangeNum, 0, Qt::AlignCenter);
     
     controlLayout->addWidget(carNumGroup);
+    controlLayout->addSpacing(38); // 添加1厘米的间隔
     
     // 控制
     QGroupBox *controlGroup = new QGroupBox("控制", this);
     controlGroup->setFont(font);
     
     QVBoxLayout *controlButtonsLayout = new QVBoxLayout(controlGroup);
-    controlButtonsLayout->setContentsMargins(20, 20, 20, 20);
-    controlButtonsLayout->setSpacing(10);
+    controlButtonsLayout->setContentsMargins(10, 10, 10, 10);
+    controlButtonsLayout->setSpacing(5);
     
     btnFront = new QPushButton("前进", controlGroup);
     btnFront->setFont(font);
@@ -200,14 +203,15 @@ void RobotDlg::initUI()
     controlButtonsLayout->addWidget(btnBack, 0, Qt::AlignCenter);
     
     controlLayout->addWidget(controlGroup);
+    controlLayout->addSpacing(38); // 添加1厘米的间隔
     
     // 小车频率设置
     QGroupBox *carFreqGroup = new QGroupBox("小车频率设置", this);
     carFreqGroup->setFont(font);
     
     QHBoxLayout *carFreqLayout = new QHBoxLayout(carFreqGroup);
-    carFreqLayout->setContentsMargins(20, 20, 20, 20);
-    carFreqLayout->setSpacing(15);
+    carFreqLayout->setContentsMargins(10, 10, 10, 10);
+    carFreqLayout->setSpacing(10);
     
     QLabel *carNumLabel = new QLabel("车号", carFreqGroup);
     carNumLabel->setFont(font);
@@ -231,14 +235,15 @@ void RobotDlg::initUI()
     carFreqLayout->addWidget(btnChangeFreq);
     
     controlLayout->addWidget(carFreqGroup);
+    controlLayout->addSpacing(38); // 添加1厘米的间隔
     
     // 发射器设置
     QGroupBox *deviceGroup = new QGroupBox("发射器设置", this);
     deviceGroup->setFont(font);
     
     QHBoxLayout *deviceLayout = new QHBoxLayout(deviceGroup);
-    deviceLayout->setContentsMargins(20, 20, 20, 20);
-    deviceLayout->setSpacing(15);
+    deviceLayout->setContentsMargins(10, 10, 10, 10);
+    deviceLayout->setSpacing(10);
     
     QVBoxLayout *freqButtonsLayout = new QVBoxLayout();
     btn450 = new QPushButton("450", deviceGroup);
@@ -274,15 +279,6 @@ void RobotDlg::initUI()
     
     topLayout->addLayout(controlLayout);
     mainLayout->addLayout(topLayout);
-    
-    // 输出区域
-    QLabel *outputLabel = new QLabel(this);
-    outputLabel->setStyleSheet("QLabel { background-color: #f0f0f0; border: 1px solid black; font-family: Consolas; font-size: 10pt; }");
-    outputLabel->setFont(font);
-    outputLabel->setText("输出区域:");
-    outputLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    outputLabel->setFixedHeight(100);
-    mainLayout->addWidget(outputLabel);
     
     // 初始化定时器
     timer = new QTimer(this);

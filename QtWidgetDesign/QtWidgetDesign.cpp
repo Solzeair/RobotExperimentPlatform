@@ -5,11 +5,15 @@
 #include "ColorDlg.h"
 #include "MatchDlg_5vs5.h"
 #include "DisplayDlg.h"
+#include "Debug.h"
+#include <QTextEdit>
+#include <QPushButton>
 
 QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     : CFrameLessWidgetBase(parent)
 {
-    this->setMinimumSize(1200, 800);
+    // 保持主窗口的宽度不变，只减小高度
+    this->setMinimumSize(1200, 700);
 
     // 将窗口移动到屏幕正中央
     QScreen* screen = QGuiApplication::primaryScreen();
@@ -35,7 +39,7 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     
     // 创建垂直布局，使DisplayDlg在垂直方向上偏上
     QVBoxLayout* leftLayout = new QVBoxLayout();
-    leftLayout->addStretch(1);  // 顶部空白（较小比例）
+    // 移除顶部的stretch，减少顶部空白
     leftLayout->addWidget(displayDlg);
     leftLayout->addStretch(2);  // 底部空白（较大比例）
     
@@ -44,8 +48,10 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     // 右侧标签页控件
     QTabWidget* myTabWidget = new QTabWidget(this);
     
-    // 设置标签页为可伸缩
+    // 设置标签页为可伸缩，充满右侧整个界面
     myTabWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    // 移除最小尺寸设置，避免遮挡左侧显示区域
+    // myTabWidget->setMinimumSize(560, 800);
 
     myTabWidget->setStyleSheet(      
         "QTabBar::tab {"
@@ -102,6 +108,32 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     // 将标签页添加到主布局
     mainLayout->addWidget(myTabWidget);
 
+    // 创建调试信息文本框
+    QTextEdit* debugText = new QTextEdit(this);
+    debugText->setFixedSize(640, 100);
+    debugText->setReadOnly(true);
+    debugText->setStyleSheet("font-family: Consolas; font-size: 10pt;");
+    
+    // 创建清除调试信息按钮
+    QPushButton* cleanDebugButton = new QPushButton("Clean", this);
+    cleanDebugButton->setFixedSize(80, 30);
+    
+    // 连接清除按钮信号
+    connect(cleanDebugButton, &QPushButton::clicked, [=]() {
+        Debug::get()->clean();
+    });
+    
+    // 创建调试信息布局
+    QVBoxLayout* debugLayout = new QVBoxLayout();
+    debugLayout->addWidget(debugText);
+    debugLayout->addWidget(cleanDebugButton, 0, Qt::AlignRight);
+    
+    // 将调试布局添加到左侧布局
+    leftLayout->addLayout(debugLayout);
+    
+    // 初始化Debug类
+    Debug::get()->init(debugText);
+    
     // 创建一个中心部件来容纳主布局
     QWidget* centralWidget = new QWidget();
     centralWidget->setLayout(mainLayout);

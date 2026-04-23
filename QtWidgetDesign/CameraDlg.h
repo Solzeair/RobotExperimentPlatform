@@ -51,8 +51,7 @@ private:
     // 布局
     QVBoxLayout *mainLayout;  // 主垂直布局容器
     
-    // 控件
-    QLabel *outputLabel;       // 输出区域
+
     QSlider *sliderBlackLevel;  // 亮度滑块
     QSlider *sliderGain;        // 增益滑块
     QSlider *sliderGamma;       // 对比度滑块
