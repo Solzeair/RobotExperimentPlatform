@@ -1,10 +1,14 @@
-#include "Camera.h"
+﻿#include "Camera.h"
 #include <QFile>
 #include <QTextStream>
 #include <QCoreApplication>
 #include "Debug.h"
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc.hpp>
+
+// 显示尺寸常量
+const int DISPLAY_W = 640;
+const int DISPLAY_H = 480;
 
 /*
 * Camera.cpp - 相机操作和参数管理类实现
@@ -15,6 +19,7 @@
 * 3. 从配置文件读取和保存相机参数
 * 4. 使用OpenCV实现实际相机图像捕获
 * 5. 提供图像数据转换功能
+* 6.打开的是电脑的摄像头
 */
 
 Camera* Camera::_pCamera = nullptr;
@@ -129,6 +134,12 @@ unsigned int Camera::GetBlue()const
 bool Camera::SetBlackLevel(unsigned int value)
 {
     m_nBlackLevel = value;
+    if (m_isOpen && m_capture)
+    {
+        // OpenCV不支持黑电平设置，使用亮度作为替代
+        double brightness = value / 1000.0; // 将0-10000范围映射到0-10
+        m_capture->set(cv::CAP_PROP_BRIGHTNESS, brightness);
+    }
     return true;
 }
 
@@ -140,6 +151,12 @@ bool Camera::SetBlackLevel(unsigned int value)
 bool Camera::SetGain(unsigned int value)
 {
     m_nGain = value;
+    if (m_isOpen && m_capture)
+    {
+        // OpenCV增益范围通常是0-1或0-255，将0-10000映射到0-1
+        double gain = value / 10000.0;
+        m_capture->set(cv::CAP_PROP_GAIN, gain);
+    }
     return true;
 }
 
@@ -151,6 +168,8 @@ bool Camera::SetGain(unsigned int value)
 bool Camera::SetGamma(unsigned int value)
 {
     m_nGamma = value;
+    // OpenCV的VideoCapture不支持伽马设置，暂不实现
+    // 如果需要，可以通过后处理实现
     return true;
 }
 
@@ -162,6 +181,12 @@ bool Camera::SetGamma(unsigned int value)
 bool Camera::SetShutter(unsigned int value)
 {
     m_nShutter = value;
+    if (m_isOpen && m_capture)
+    {
+        // OpenCV曝光时间转换为毫秒（Basler的value通常是微秒）
+        double exposure = value / 1000.0;
+        m_capture->set(cv::CAP_PROP_EXPOSURE, exposure);
+    }
     return true;
 }
 
@@ -173,6 +198,8 @@ bool Camera::SetShutter(unsigned int value)
 bool Camera::SetRed(unsigned int value)
 {
     m_nRed = value;
+    // OpenCV的VideoCapture不支持白平衡个别通道设置
+    // 只能在后处理中进行颜色校正
     return true;
 }
 
@@ -184,6 +211,7 @@ bool Camera::SetRed(unsigned int value)
 bool Camera::SetGreen(unsigned int value)
 {
     m_nGreen = value;
+    // OpenCV的VideoCapture不支持白平衡个别通道设置
     return true;
 }
 
@@ -195,6 +223,7 @@ bool Camera::SetGreen(unsigned int value)
 bool Camera::SetBlue(unsigned int value)
 {
     m_nBlue = value;
+    // OpenCV的VideoCapture不支持白平衡个别通道设置
     return true;
 }
 
@@ -288,6 +317,12 @@ bool Camera::Open()
         if (m_capture->isOpened())
         {
             m_isOpen = true;
+
+            // 应用保存的相机参数
+            SetBlackLevel(m_nBlackLevel);
+            SetGain(m_nGain);
+            SetShutter(m_nShutter);
+
             Debug::get()->print(L"摄像头已打开...");
             return true;
         }
@@ -352,21 +387,26 @@ bool Camera::RetrieveResult(void* ptrResult)
     cv::Mat frame;
     if (m_capture->read(frame))
     {
-        // 将OpenCV的Mat转换为RGB格式的unsigned char数组
-        cv::Mat rgbFrame = frame.clone();
-        for (int i = 0; i < rgbFrame.rows; i++) {
-            for (int j = 0; j < rgbFrame.cols; j++) {
-                cv::Vec3b &pixel = rgbFrame.at<cv::Vec3b>(i, j);
-                // 交换B和R通道
-                std::swap(pixel[0], pixel[2]);
-            }
+        // 调整图像大小以匹配目标缓冲区（DISPLAY_W x DISPLAY_H）
+        cv::Mat resizedFrame;
+        if (frame.cols != DISPLAY_W || frame.rows != DISPLAY_H)
+        {
+            cv::resize(frame, resizedFrame, cv::Size(DISPLAY_W, DISPLAY_H));
         }
-        
+        else
+        {
+            resizedFrame = frame;
+        }
+
+        // 将OpenCV的BGR转换为RGB格式（交换B和R通道）
+        cv::Mat rgbFrame = resizedFrame.clone();
+        cv::cvtColor(resizedFrame, rgbFrame, cv::COLOR_BGR2RGB);
+
         // 确保目标缓冲区有足够的空间
-        int width = frame.cols;
-        int height = frame.rows;
+        int width = rgbFrame.cols;
+        int height = rgbFrame.rows;
         int size = width * height * 3;
-        
+
         // 复制数据到目标缓冲区
         memcpy(ptrResult, rgbFrame.data, size);
         return true;
@@ -387,21 +427,26 @@ bool Camera::GrabOne(void* ptrResult)
     cv::Mat frame;
     if (m_capture->read(frame))
     {
-        // 将OpenCV的Mat转换为RGB格式的unsigned char数组
-        cv::Mat rgbFrame = frame.clone();
-        for (int i = 0; i < rgbFrame.rows; i++) {
-            for (int j = 0; j < rgbFrame.cols; j++) {
-                cv::Vec3b &pixel = rgbFrame.at<cv::Vec3b>(i, j);
-                // 交换B和R通道
-                std::swap(pixel[0], pixel[2]);
-            }
+        // 调整图像大小以匹配目标缓冲区（DISPLAY_W x DISPLAY_H）
+        cv::Mat resizedFrame;
+        if (frame.cols != DISPLAY_W || frame.rows != DISPLAY_H)
+        {
+            cv::resize(frame, resizedFrame, cv::Size(DISPLAY_W, DISPLAY_H));
         }
-        
+        else
+        {
+            resizedFrame = frame;
+        }
+
+        // 将OpenCV的BGR转换为RGB格式
+        cv::Mat rgbFrame;
+        cv::cvtColor(resizedFrame, rgbFrame, cv::COLOR_BGR2RGB);
+
         // 确保目标缓冲区有足够的空间
-        int width = frame.cols;
-        int height = frame.rows;
+        int width = rgbFrame.cols;
+        int height = rgbFrame.rows;
         int size = width * height * 3;
-        
+
         // 复制数据到目标缓冲区
         memcpy(ptrResult, rgbFrame.data, size);
         return true;
@@ -433,10 +478,9 @@ bool Camera::IsCameraDeviceRemoved()
 */
 void Camera::ConvertBitmap(unsigned char* pDest, unsigned char* pSource, int width, int height)
 {
-    // 实现图像转换逻辑，将pSource转换为pDest
-    // 这里提供一个基本的实现，与MFC版本保持一致
+    // OpenCV的VideoCapture已经返回解码后的BGR图像
+    // 这里直接复制数据即可
+    // 如果需要Bayer转换，应该在GrabOne/RetrieveResult中进行
     int size = width * height * 3;
-    for (int i = 0; i < size; i++) {
-        pDest[i] = pSource[i];
-    }
+    memcpy(pDest, pSource, size);
 }

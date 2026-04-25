@@ -6,6 +6,7 @@
 */
 #include "RobotDlg.h"
 #include "Debug.h"
+#include <QCloseEvent>
 
 // 定义USE_USB340宏，使用真实的设备函数
 // #define USE_USB340
@@ -240,11 +241,11 @@ void RobotDlg::initUI()
     // 发射器设置
     QGroupBox *deviceGroup = new QGroupBox("发射器设置", this);
     deviceGroup->setFont(font);
-    
+
     QHBoxLayout *deviceLayout = new QHBoxLayout(deviceGroup);
     deviceLayout->setContentsMargins(10, 10, 10, 10);
     deviceLayout->setSpacing(10);
-    
+
     QVBoxLayout *freqButtonsLayout = new QVBoxLayout();
     btn450 = new QPushButton("450", deviceGroup);
     btn450->setFont(font);
@@ -260,7 +261,7 @@ void RobotDlg::initUI()
     freqButtonsLayout->addWidget(btn450);
     freqButtonsLayout->addWidget(btn460);
     freqButtonsLayout->addWidget(btnConfirmFreq);
-    
+
     QVBoxLayout *statusLayout = new QVBoxLayout();
     QLabel *deviceStatusLabel = new QLabel("发射器状态：", deviceGroup);
     deviceStatusLabel->setFont(font);
@@ -271,20 +272,20 @@ void RobotDlg::initUI()
     editDeviceStatus->setFont(font);
     statusLayout->addWidget(deviceStatusLabel);
     statusLayout->addWidget(editDeviceStatus);
-    
+
     deviceLayout->addLayout(freqButtonsLayout);
     deviceLayout->addLayout(statusLayout);
-    
+
     controlLayout->addWidget(deviceGroup);
-    
+
     topLayout->addLayout(controlLayout);
     mainLayout->addLayout(topLayout);
-    
+
     // 初始化定时器
     timer = new QTimer(this);
     connect(timer, SIGNAL(timeout()), this, SLOT(onTimer()));
     // timer->start(TIME_SPACE); // 暂时注释掉，需要时取消注释
-    
+
     // 连接信号槽
     connect(btnFront, SIGNAL(clicked()), this, SLOT(onButtonFront()));
     connect(btnBack, SIGNAL(clicked()), this, SLOT(onButtonBack()));
@@ -298,13 +299,13 @@ void RobotDlg::initUI()
     connect(btnConfirmFreq, SIGNAL(clicked()), this, SLOT(onButtonConfirmFreq()));
     connect(radio1_450, SIGNAL(clicked()), this, SLOT(onRadio1450()));
     connect(radio1_460, SIGNAL(clicked()), this, SLOT(onRadio1460()));
-    
-    // 设置单选按钮状态
-    radio1_450->setChecked(true);
+
+    // 设置按钮状态
+    btn450->setChecked(true);
     if(m_carFre)
-        radio1_450->setChecked(true);
+        btn450->setChecked(true);
     else
-        radio1_460->setChecked(true);
+        btn460->setChecked(true);
 }
 
 void RobotDlg::onButtonFront()
@@ -392,11 +393,19 @@ void RobotDlg::onButtonChangeFreq()
     }
 }
 
+void RobotDlg::onRadio1450()
+{
+    m_carFre = true;
+}
+
+void RobotDlg::onRadio1460()
+{
+    m_carFre = false;
+}
+
 void RobotDlg::onButton450()
 {
-    // 记录选择的频率
     m_selectedFreq = 450;
-    // 更新按钮状态
     btn450->setChecked(true);
     btn460->setChecked(false);
     Debug::get()->print(L"选择发射器频率为 450，点击确定后生效");
@@ -404,9 +413,7 @@ void RobotDlg::onButton450()
 
 void RobotDlg::onButton460()
 {
-    // 记录选择的频率
     m_selectedFreq = 460;
-    // 更新按钮状态
     btn450->setChecked(false);
     btn460->setChecked(true);
     Debug::get()->print(L"选择发射器频率为 460，点击确定后生效");
@@ -414,7 +421,6 @@ void RobotDlg::onButton460()
 
 void RobotDlg::onButtonConfirmFreq()
 {
-    // 确认并应用选择的频率
     if (m_selectedFreq == 450)
     {
         SetFre(450, false);
@@ -433,7 +439,6 @@ void RobotDlg::onButtonConfirmFreq()
 
 void RobotDlg::onTimer()
 {
-    // 检查设备是否存在
     if (CheckIfExist())
     {
         editDeviceStatus->setText("设备已连接");
@@ -445,12 +450,11 @@ void RobotDlg::onTimer()
     }
 }
 
-void RobotDlg::onRadio1450()
+void RobotDlg::closeEvent(QCloseEvent* event)
 {
-    m_carFre = true;
-}
-
-void RobotDlg::onRadio1460()
-{
-    m_carFre = false;
+    if (timer)
+    {
+        timer->stop();
+    }
+    event->accept();
 }

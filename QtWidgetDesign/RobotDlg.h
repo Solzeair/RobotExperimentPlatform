@@ -30,6 +30,9 @@ public:
     RobotDlg(QWidget* parent = nullptr);  //初始化调车面板及其状态
     ~RobotDlg();
 
+protected:
+    void closeEvent(QCloseEvent* event) override;  //窗口关闭事件
+
 private slots:
     void onButtonFront();                 //前进按钮点击
     void onButtonBack();                  //后退按钮点击
@@ -38,11 +41,11 @@ private slots:
     void onButtonStop();                  //停止运动按钮点击
     void onButtonChangeNum();             //修改小车编号按钮点击
     void onButtonChangeFreq();            //修改通信频率按钮点击
-    void onButton450();                   //选择发射器频率为450
-    void onButton460();                   //选择发射器频率为460
-    void onButtonConfirmFreq();           //确认发射器频率设置
     void onRadio1450();                   //选择小车频率为450
     void onRadio1460();                   //选择小车频率为460
+    void onButton450();                   //选择发射器频率为450
+    void onButton460();                   //选择发射器频率为460
+    void onButtonConfirmFreq();            //确认发射器频率设置
     void onTimer();                       //定时器回调函数
 
 private:

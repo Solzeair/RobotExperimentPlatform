@@ -1,4 +1,4 @@
-﻿// DisplayDlg.cpp - 左侧显示区域实现文件
+// DisplayDlg.cpp - 左侧显示区域实现文件
 // 功能：实现摄像头图像显示、目标识别、颜色分析和足球机器人比赛相关功能
 //代码存在问题未修改
 #include "DisplayDlg.h"
@@ -166,15 +166,13 @@ void DisplayDlg::initUI()
 }
 
 // 功能：从摄像头获取一帧图像并显示
- 
+
 void DisplayDlg::ShowSingle()
 {
-    if (GrabSingle()) {
-        QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-        QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
-        displayLabel->setPixmap(pixmap);
-    }
-    m_status = STATUS::Display;
+    GrabSingle();
+    QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
+    QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+    displayLabel->setPixmap(pixmap);
 }
 
 //功能：启动定时器，持续从摄像头获取图像并显示
@@ -207,7 +205,6 @@ void DisplayDlg::ShowCarNum()
     if (pCamera->IsGrabbing()) {
         this->Stop();
     }
-    m_status = STATUS::Stop;
     // 加载并显示车号图像
     QImage carNumImage("resources/carnum.bmp");
     if (!carNumImage.isNull()) {
@@ -362,17 +359,16 @@ void DisplayDlg::SelectSetStatus(SET_STATUS s)
 }
 
 // 功能：绘制足球场背景和机器人
- 
+
 void DisplayDlg::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event);
-    QPainter painter(this);
 
     // 只在比赛相关状态下绘制足球场背景和机器人
     if (m_status == STATUS::Game || m_status == STATUS::Prepare) {
+        QPainter painter(displayLabel);
         DrawAll(&painter);
     }
-    // 其他状态不绘制背景，保持displayLabel的内容
 }
 
 // 功能：处理颜色设置时的鼠标拖拽操作
@@ -441,12 +437,13 @@ void DisplayDlg::updateFPS()
 }
 
 //功能：根据当前状态处理图像并显示
- 
+
 void DisplayDlg::ProcessImage(unsigned char *pBmp)
 {
-    // 使用Camera类的ConvertBitmap方法，与MFC版本保持一致
+    // pBmp已经是RGB格式的数据（由GrabOne转换后的结果）
+    // 直接复制到m_pDispBitmap进行显示
     Camera *pCamera = Camera::GetInstance();
-    pCamera->ConvertBitmap(m_pDispBitmap, pBmp, DISPLAY_W, DISPLAY_H);
+    memcpy(m_pDispBitmap, pBmp, DISPLAY_W * DISPLAY_H * 3);
 
     switch (m_status) {
     case STATUS::Display:
@@ -488,15 +485,20 @@ void DisplayDlg::ProcessImage(unsigned char *pBmp)
 }
 
 //功能：从摄像头获取一帧图像
- 
+
 bool DisplayDlg::GrabSingle()
 {
     Camera *pCamera = Camera::GetInstance();
-    if (pCamera->IsGrabbing()) {
-        pCamera->GrabOne(m_pDispBitmap);
-        return true;
+    if (!pCamera->IsOpen()) {
+        if (!pCamera->Open()) {
+            return false;
+        }
+        pCamera->StartGrabbing();
     }
-    return false;
+    if (!pCamera->IsGrabbing()) {
+        pCamera->StartGrabbing();
+    }
+    return pCamera->GrabOne(m_pDispBitmap);
 }
 
 //功能：从栈中弹出一个坐标点
