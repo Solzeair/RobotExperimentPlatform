@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include "Debug.h"
 #include <opencv2/opencv.hpp>
+#include <opencv2/imgproc.hpp>
 
 /*
 * Camera.cpp - 相机操作和参数管理类实现
@@ -352,8 +353,14 @@ bool Camera::RetrieveResult(void* ptrResult)
     if (m_capture->read(frame))
     {
         // 将OpenCV的Mat转换为RGB格式的unsigned char数组
-        cv::Mat rgbFrame;
-        cv::cvtColor(frame, rgbFrame, cv::COLOR_BGR2RGB);
+        cv::Mat rgbFrame = frame.clone();
+        for (int i = 0; i < rgbFrame.rows; i++) {
+            for (int j = 0; j < rgbFrame.cols; j++) {
+                cv::Vec3b &pixel = rgbFrame.at<cv::Vec3b>(i, j);
+                // 交换B和R通道
+                std::swap(pixel[0], pixel[2]);
+            }
+        }
         
         // 确保目标缓冲区有足够的空间
         int width = frame.cols;
@@ -381,8 +388,14 @@ bool Camera::GrabOne(void* ptrResult)
     if (m_capture->read(frame))
     {
         // 将OpenCV的Mat转换为RGB格式的unsigned char数组
-        cv::Mat rgbFrame;
-        cv::cvtColor(frame, rgbFrame, cv::COLOR_BGR2RGB);
+        cv::Mat rgbFrame = frame.clone();
+        for (int i = 0; i < rgbFrame.rows; i++) {
+            for (int j = 0; j < rgbFrame.cols; j++) {
+                cv::Vec3b &pixel = rgbFrame.at<cv::Vec3b>(i, j);
+                // 交换B和R通道
+                std::swap(pixel[0], pixel[2]);
+            }
+        }
         
         // 确保目标缓冲区有足够的空间
         int width = frame.cols;

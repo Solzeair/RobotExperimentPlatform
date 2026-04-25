@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QWidget>
 #include <QVBoxLayout>
@@ -9,7 +9,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <vector>
-
+#include<algorithm>
 /*
 * DisplayDlg.h - 显示对话框头文件
 * 
@@ -128,7 +128,8 @@ public:
     QRect GetRect() const { return m_Rect; }
     void ColorAnalyse(const QRect &rect, int yi[], std::vector<QPoint> &vecColorSet);
     void ColorAnalyse(const std::vector<QPoint> &pts, int yi[], std::vector<QPoint> &vecColorSet);
-    int MIN(int R, int G, int B, int N);
+    int MINS(int R, int G, int B, int N);
+    int GetMinValue(int val1, int val2, int val3, int val4);
     void RGBToHS(int m, int n, unsigned char *P, int &H, int &S, int &I);
 
 protected:

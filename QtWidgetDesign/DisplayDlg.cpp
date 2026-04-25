@@ -182,7 +182,7 @@ void DisplayDlg::ShowSingle()
 void DisplayDlg::ShowDynamic()
 {
     if (m_status != STATUS::Game) {
-        if (m_status == STATUS::RunTest) {
+        if (m_status == STATUS::RunTest || m_status == STATUS::Prepare || m_status == STATUS::Stop) {
             Stop();
         }
         m_status = STATUS::Display;
@@ -301,14 +301,32 @@ void DisplayDlg::ShowRunTest(bool ImageSeg)
     m_grabTimer->start(33);
 }
 
-//功能：设置准备状态，显示足球场背景
- 
+//功能：设置准备状态，初始化游戏并识别所有目标
 void DisplayDlg::ShowInitGame()
 {
+    this->GrabSingle();
+    for (int i = 0; i < MAX_ROBOT_NUM; i++) {
+        robotInfor[i].x = 0.0;
+        robotInfor[i].y = 0.0;
+        robotInfor[i].theta = 0.0;
+        robotBk[i].x = 0.0;
+        robotBk[i].y = 0.0;
+        robotBk[i].theta = 0.0;
+        OpprobotInfor[i].x = 0.0;
+        OpprobotInfor[i].y = 0.0;
+        OpprobotBk[i].x = 0.0;
+        OpprobotBk[i].y = 0.0;
+    }
+    ballInfor.x = 0.0;
+    ballInfor.y = 0.0;
+    ballInfor.theta = 0.0;
+    ballBk.x = 0.0;
+    ballBk.y = 0.0;
+    ballBk.theta = 0.0;
+    m_pIdentify = m_pDispSingle;
+    IdentifyAll();
     m_status = STATUS::Prepare;
-    // 显示绿色足球场背景
-    QPixmap pixmap = QPixmap::fromImage(m_groundImage);
-    displayLabel->setPixmap(pixmap);
+    update();
 }
 
 // 功能：设置游戏状态，启动游戏逻辑
@@ -590,7 +608,7 @@ void DisplayDlg::DrawOpp(QPainter *painter)
 }
 
 // 功能：绘制足球位置
- 
+
 void DisplayDlg::DrawBall(QPainter *painter)
 {
     painter->setPen(QPen(Qt::red, 1));
@@ -646,27 +664,19 @@ void DisplayDlg::DrawRobot(QPainter *painter)
 }
 
  //功能：计算三个或四个值中的最小值
-int DisplayDlg::MIN(int a, int b, int c, int n)
+int DisplayDlg::GetMinValue(int val1, int val2, int val3, int val4)
 {
-    int minvalue = 255;
-    int tem;
-    if (n < 3)
-        return 0;
-    if (n == 3)
-    {
-        tem = (a < b) ? a : b;
-        minvalue = (tem < c) ? tem : c;
-    }
-    else if (n == 4)
-    {
-        for (int i = 0; i < n; i++)
-        {
-            minvalue = (minvalue < a) ? minvalue : a;
-            minvalue = (minvalue < b) ? minvalue : b;
-            minvalue = (minvalue < c) ? minvalue : c;
-        }
-    }
-    return minvalue;
+    // 清晰的最小值逻辑，易维护
+    int minVal = val1;
+    if (val2 < minVal) minVal = val2;
+    if (val3 < minVal) minVal = val3;
+    if (val4 < minVal) minVal = val4;
+    return minVal;
+}
+
+int DisplayDlg::MINS(int R, int G, int B, int N)
+{
+    return GetMinValue(R, G, B, N);
 }
 
 //功能：计算图像点的灰度值
