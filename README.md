@@ -1,204 +1,258 @@
-# 机器人策略DLL模块 - 技术说明文档
-
-**最后更新**: 2026年4月13日  
-**负责人**: 吴佳杰
-**状态**: ✅ 编译通过，功能完整
+# RobotStrategyDll 代码分析与函数调用流程说明文档
+**适用项目**：5v5 机器人足球策略决策库  
+**用途**：开发调试、维护、二次开发、功能交接
 
 ---
 
-## 一、模块概述
+## 一、项目整体概览
+### 1.1 项目定位
+5v5 机器人足球比赛**策略决策动态库（DLL）**，接收场地、机器人、球状态数据，输出左右轮速指令，实现全自主攻防战术。
 
-本模块实现了一个完整的机器人足球策略系统，以 Windows DLL 形式提供，可被上层应用程序动态加载调用。
+### 1.2 核心架构分层
+```
+外部调用层（main / 比赛GUI）
+        ↓
+DLL 接口层（StrategyFactory + 导出函数）
+        ↓
+核心调度层（UnifiedStrategy / StrategyCore）
+        ↓
+战术业务层（区域划分 → 队形 → 角色 → 动作）
+        ↓
+基础工具层（几何、运动控制、参数、预测）
+```
 
-### 核心功能
-- ✅ 5v5 机器人足球策略决策
-- ✅ 32区域战术队形管理
-- ✅ 动态角色分配（匈牙利算法）
-- ✅ PID运动控制 + 避障算法
-- ✅ 守门员专用逻辑
-- ✅ 传球协调器
-- ✅ 射门判断与执行
-- ✅ **策略模式选择器（新增）**：根据比赛场景自动选择进攻/防守模式
-
----
-
-## 二、已完成功能清单
-
-### 2.1 策略核心模块
-
-| 文件 | 功能 | 状态 |
-|------|------|------|
-| UnifiedStrategy.cpp/h | 统一策略主控类 | ✅ 完成 |
-| FieldGeometry.cpp/h | 场地几何管理 | ✅ 完成 |
-| AreaDivider.cpp/h | 32区域划分 | ✅ 完成 |
-| Formation.cpp/h | 队形管理 | ✅ 完成 |
-| RoleAllocator.cpp/h | 角色分配（匈牙利算法） | ✅ 完成 |
-| RoleTable.cpp/h | 角色行为库（80+角色） | ✅ 完成 |
-
-### 2.2 运动控制模块
-
-| 文件 | 功能 | 状态 |
-|------|------|------|
-| MotionControl.cpp/h | PID控制、避障、轨迹跟踪 | ✅ 完成 |
-| ControlParams.h | 控制参数结构 | ✅ 完成 |
-
-### 2.3 专项功能模块
-
-| 文件 | 功能 | 状态 |
-|------|------|------|
-| Goalie.cpp/h | 守门员逻辑 | ✅ 完成 |
-| Shoot.cpp/h | 射门判断与执行 | ✅ 完成 |
-| PassCoordinator.cpp/h | 传球协调器 | ✅ 完成 |
-| BallPredictor.cpp/h | 球轨迹预测 | ✅ 完成 |
-| BoundaryHandler.cpp/h | 边界处理 | ✅ 完成 |
-
-### 2.4 策略选择模块（本次新增）
-
-| 文件 | 功能 | 状态 |
-|------|------|------|
-| StrategySelector.cpp/h | 策略模式选择器 | ✅ 完成 |
-| StrategyInitializer.cpp/h | 策略初始化器 | ✅ 完成 |
-
-### 2.5 DLL导出接口
-
-| 文件 | 功能 | 状态 |
-|------|------|------|
-| robotstrategydll.cpp/h | DLL导出接口 | ✅ 完成 |
-| robotstrategydll_global.h | 导出宏定义 | ✅ 完成 |
-
-### 2.6 测试程序
-
-| 文件 | 功能 | 状态 |
-|------|------|------|
-| main.cpp | Qt测试程序 | ✅ 完成 |
-| ParameterDialog.cpp/h | 参数调优UI | ✅ 完成 |
+### 1.3 模块分类清单
+1. **接口层**：StrategyFactory、export.h、robotstrategydll.h  
+2. **核心策略**：UnifiedStrategy、StrategyCore、StrategyInitializer、StrategySelector  
+3. **区域与队形**：AreaDivider、Formation  
+4. **角色系统**：Role、RoleAllocator、RoleTable  
+5. **运动控制**：MotionControl、Goalie  
+6. **战术能力**：BallPredictor、BoundaryHandler、PassCoordinator、Shoot  
+7. **基础工具**：FieldGeometry、GeometryUtils、ControlParams、ParameterTuning  
+8. **上层GUI**：ParameterDialog、MatchDlg_5vs5、main
 
 ---
 
-## 三、DLL导出接口说明
+## 二、完整函数调用流程
+### 2.1 初始化流程（执行一次）
+```
+main() / MatchDlg_5vs5
+  ├─ 加载 RobotStrategyDll.dll
+  ├─ 解析导出函数指针
+  ├─ CreateStrategy(0)
+  │     └─ StrategyFactory::CreateStrategy
+  │           └─ new UnifiedStrategy()
+  │
+  ├─ InitializeStrategy(比分、时间、半场)
+  │     └─ StrategyInitializer::initializeStrategy
+  │           ├─ StrategySelector::selectMode()
+  │           └─ UnifiedStrategy::applyStrategyConfig()
+  │
+  ├─ setOurGoalOnRight / setOurKickoff
+  └─ setParameter（速度、PID、战术参数）
+```
 
-### 3.1 基础接口
+### 2.2 每帧决策流程（核心闭环）
+```
+外部循环 → decide(...) 【DLL导出函数】
+        ↓
+UnifiedStrategy::decide(...)
+        ├─ 1. preProcess()
+        │     ├─ FieldGeometry::transformToStandard()
+        │     └─ BallPredictor::updateHistory + predictPosition
+        │
+        ├─ 2. AreaDivider::getAreaNo(ball)
+        │     └─ calculateAreaInStandard → 1~32 / 100 / 101
+        │
+        ├─ 3. taskDecompose(areaNo)
+        │     ├─ 边界 → 100，角球 → 101
+        │     └─ 常规 → 原区域号
+        │
+        ├─ 4. formInterpret(formationNo)
+        │     └─ Formation::getFormation(areaNo)
+        │           └─ getFormation1~32 → 生成5个Role
+        │
+        ├─ 5. charAllot / RoleAllocator::assignRoles
+        │     ├─ 构建成本矩阵
+        │     └─ 匈牙利算法 → 机器人-角色最优匹配
+        │
+        ├─ 6. robotManager()
+        │     ├─ 边界卡死检测
+        │     └─ MotionControl::avoidAllRobots()
+        │
+        └─ 7. actProcess()
+              └─ 遍历5台机器人
+                    └─ RoleTable::executeRole(roleId)
+                          ├─ 门将：Goalie::goalieAction()
+                          ├─ 射门：Shoot::shouldShoot() + endProcess()
+                          ├─ 传球：PassCoordinator::evaluatePass()
+                          └─ 移动：MotionControl::moveToPoint()
+                                └─ 输出轮速 velocities[5]
+```
 
-| 函数名 | 参数 | 返回值 | 说明 |
-|--------|------|--------|------|
-| `CreateStrategy` | int type | void* | 创建策略实例 |
-| `DestroyStrategy` | void* strategy | void | 销毁策略实例 |
-| `decide` | 机器人、球、对手数据 | void | 核心决策函数 |
-| `reset` | void* strategy | void | 重置策略状态 |
-| `setParameter` | key, value | void | 设置策略参数 |
-| `getParameter` | key | double | 获取策略参数 |
-
-### 3.2 配置接口
-
-| 函数名 | 参数 | 说明 |
-|--------|------|------|
-| `setOurGoalOnRight` | bool onRight | 设置我方球门方向 |
-| `setOurKickoff` | bool isOurKickoff | 设置开球权 |
-
-### 3.3 策略选择接口（新增）
-
-| 函数名 | 参数 | 说明 |
-|--------|------|------|
-| `InitializeStrategy` | ourScore, oppScore, time, half, kickoff | 根据场景初始化策略模式 |
-| `GetCurrentStrategyMode` | void* strategy | 获取当前策略模式 |
-| `SetStrategyMode` | int mode | 设置策略模式（锁定前可用） |
+### 2.3 特殊比赛状态流程
+```
+UnifiedStrategy::decide
+  └─ updateMatchState()
+        └─ switch (STATE_XXX)
+              ├─ 点球 / 开球 / 门球 / 任意球 / 争球
+              └─ 调用 Formation 对应特殊队形
+```
 
 ---
 
-## 四、策略模式选择逻辑
+## 三、关键模块内部调用关系
+### 3.1 区域划分（AreaDivider）
+```
+getAreaNo(ball, field)
+  ├─ transformToStandard(ball)
+  └─ calculateAreaInStandard(x, y, field)
+        ├─ Y轴分层：160、135、90、45、20
+        ├─ X轴分列：30、60、90
+        ├─ 左半场 → 1~16
+        └─ 右半场 → 坐标镜像 → 17~32
+```
 
-### 4.1 四种策略模式
+### 3.2 队形生成（Formation）
+```
+getFormation(areaNo)
+  └─ switch → getFormationX()
+        └─ 返回 vector<Role>(5)
+              ├─ 角色ID
+              ├─ 目标点 targetPos
+              ├─ 优先级 priority
+              └─ 角色名称
+```
 
-| 模式 | 适用场景 | 进攻侵略性 | 防守深度 | 压迫强度 |
-|------|----------|------------|----------|----------|
-| 激进进攻 | 落后、上半场开球、最后时刻 | 0.85 | 0.3 | 0.8 |
-| 平衡 | 默认、上半场对方开球 | 0.6 | 0.5 | 0.5 |
-| 保守防守 | 领先2球、最后1分钟领先 | 0.3 | 0.8 | 0.3 |
-| 防守反击 | 领先1球且时间充裕 | 0.5 | 0.7 | 0.4 |
+### 3.3 角色分配（RoleAllocator）
+```
+assignRoles
+  ├─ 选择门将：离球门最近机器人
+  ├─ 构建距离成本矩阵
+  └─ 贪心/匈牙利最优分配 → assignedRoles[5]
+```
 
-### 4.2 决策流程
-上半场：如果是我方开球，直接采用进攻模式；如果是对方开球，先采用平衡模式试探。
+### 3.4 角色执行（RoleTable）
+```
+executeRole(roleId)
+  └─ switch (roleId)
+        ├─ ROLE_SHOOT → 射门
+        ├─ ROLE_BOUND_PUSH → 边线推球
+        ├─ ROLE_GOALIE → 门将逻辑
+        ├─ ROLE_WAIT_* → 接应等待
+        └─ 统一调用 MotionControl 移动
+```
 
-下半场：
+### 3.5 运动控制（MotionControl）
+```
+moveToPoint
+  ├─ 计算距离与目标角度
+  ├─ PD 闭环控制（kp_pos + kd_pos）
+  ├─ 近距离减速
+  └─ 输出左右轮速
+```
 
-如果我方领先 2 球及以上，转为防守模式；
+### 3.6 门将逻辑（Goalie）
+```
+goalieAction
+  ├─ 预测球与球门线交点
+  ├─ 移动到最佳防守站位
+  ├─ 满足条件 → 出击截球
+  └─ 门柱防撞处理
+```
 
-如果我方领先 1 球且比赛进入最后 1 分钟，转为防守模式，否则保持平衡模式；
+### 3.7 边界处理（BoundaryHandler）
+```
+handleBoundary
+  ├─ 球在角点 → handleCornerKick
+  ├─ 球靠近边线 → pushBallFromBoundary
+  └─ 调用 MotionControl 推球回场
+```
 
-如果我方落后，无论时间多少，都采用进攻模式；
+### 3.8 球轨迹预测（BallPredictor）
+```
+predictPosition
+  ├─ 使用最近7帧计算平均速度
+  └─ 线性外推未来位置
+```
 
-如果平局，最后 1 分钟采用进攻模式，否则保持平衡模式。
-### 4.3 调用示例
-// 比赛开始前调用
-InitializeStrategy(
-    strategy,    // 策略实例
-    0,           // 我方比分
-    0,           // 对方比分
-    300,         // 剩余时间（秒）
-    1,           // 上半场（1=上半场，0=下半场）
-    1            // 我方开球（1=我方，0=对方）
-);
-五、编译与部署
-5.1 编译环境
-项目	配置
-IDE	Visual Studio 2026
-编译器	MSVC v145 (VS2022工具集)
-Qt版本	6.5.3 MSVC 2019 64-bit
-平台	x64
-5.2 编译步骤
-打开 RobotStrategyDll.sln 解决方案
+### 3.9 传球协调（PassCoordinator）
+```
+evaluatePass
+  ├─ 遍历所有接应队员
+  ├─ 计算传球成功率（距离+防守干扰）
+  └─ 返回最优传球目标
+```
 
-选择 x64 | Debug 配置
+---
 
-生成 → 生成解决方案
+## 四、数据结构传递链路
+### 4.1 输入（外部 → DLL）
+```cpp
+RobotPose robots[5];    // 我方位姿
+Point oppRobots[5];     // 敌方位置
+BallInfo ball;          // 球信息
+```
 
-DLL 输出路径：debug\RobotStrategyDll.dll
+### 4.2 内部流转
+```
+AreaNo → FormationNo → vector<Role> → 角色分配表 → roleId
+```
 
-5.3 部署说明
-调用方需要：
+### 4.3 输出（DLL → 外部）
+```cpp
+WheelVelocity velocities[5]; // 左右轮速
+```
 
-将 RobotStrategyDll.dll 放在 exe 同目录
+---
 
-确保 Qt 运行环境可用（windeployqt.exe 部署）
+## 五、函数调用极简流程图
+```
+CreateStrategy → InitializeStrategy → decide()【每帧】
+                                           ├─ preProcess → BallPredictor
+                                           ├─ AreaDivider → 区域号
+                                           ├─ Formation → 角色列表
+                                           ├─ RoleAllocator → 分配角色
+                                           └─ actProcess
+                                                 ├─ RoleTable
+                                                 │    ├─ Goalie
+                                                 │    ├─ Shoot
+                                                 │    ├─ PassCoordinator
+                                                 │    └─ BoundaryHandler
+                                                 └─ MotionControl → 输出轮速
+```
 
-六、文件结构
-text
-RobotStrategyDll/
-├── 核心策略模块
-│   ├── UnifiedStrategy.cpp/h      # 主策略类
-│   ├── FieldGeometry.cpp/h        # 场地几何
-│   ├── AreaDivider.cpp/h          # 区域划分
-│   ├── Formation.cpp/h            # 队形管理
-│   ├── RoleAllocator.cpp/h        # 角色分配
-│   └── RoleTable.cpp/h            # 角色行为库
-│
-├── 运动控制模块
-│   ├── MotionControl.cpp/h        # PID控制+避障
-│   └── ControlParams.h            # 控制参数
-│
-├── 专项功能模块
-│   ├── Goalie.cpp/h               # 守门员
-│   ├── Shoot.cpp/h                # 射门
-│   ├── PassCoordinator.cpp/h      # 传球
-│   ├── BallPredictor.cpp/h        # 球预测
-│   └── BoundaryHandler.cpp/h      # 边界处理
-│
-├── 策略选择模块（新增）
-│   ├── StrategySelector.cpp/h     # 策略选择器
-│   └── StrategyInitializer.cpp/h  # 策略初始化
-│
-├── DLL导出模块
-│   ├── robotstrategydll.cpp/h     # 导出接口
-│   ├── robotstrategydll_global.h  # 导出宏
-│   └── StrategyFactory.cpp/h      # 工厂类
-│
-├── 测试程序
-│   ├── main.cpp                   # Qt测试入口
-│   ├── ParameterDialog.cpp/h      # 参数调优UI
-│   └── ParameterDialog.ui         # UI文件
-│
-└── 项目文件
-    ├── RobotStrategyDll.pro       # Qt项目文件
-    └── RobotStrategyDll.vcxproj   # VS项目文件
+---
 
-> 我的策略模块主要实现了5v5足球机器人的策略决策，包括32区域队形、角色分配、运动控制、守门员、射门、传球等功能。另外我还根据比赛场景（比分、时间、半场、开球权）做了策略模式选择器，可以在比赛开始前自动选择进攻、平衡或防守模式。DLL接口已经导出，你们可以直接调用。详细的接口说明和调用示例都在文档里。
+## 六、模块依赖关系
+- 所有模块依赖：**GeometryUtils、FieldGeometry**  
+- 策略核心依赖：**AreaDivider、Formation、RoleAllocator、RoleTable**  
+- 角色执行依赖：**MotionControl、Goalie、Shoot、PassCoordinator**  
+- GUI 上层依赖：**DLL 导出函数、ParameterTuning**
+
+---
+
+## 七、典型场景调用示例
+### 7.1 常规进攻
+```
+decide
+  ├─ 球在对方半场区域24
+  ├─ 队形输出：射门 + 直冲 + 双后卫
+  ├─ 分配最近机器人执行射门
+  └─ 运动控制移动 → 射门
+```
+
+### 7.2 边线球
+```
+decide
+  ├─ 判定边界场景 → formationNo=100
+  ├─ 队形：边线推球
+  └─ BoundaryHandler 将球推回场内
+```
+
+### 7.3 点球
+```
+decide
+  ├─ 比赛状态=点球
+  ├─ 队形：点球手 + 接应 + 人墙
+  └─ 高速射门动作
