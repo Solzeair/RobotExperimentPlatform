@@ -7,8 +7,20 @@
 #include "ColorDlg.h"
 #include <cmath>
 
+// 自定义MIN函数，计算三个值中的最小值
+inline int MIN(int a, int b, int c, int n)
+{
+    int min_val = a;
+    if (b < min_val) min_val = b;
+    if (c < min_val) min_val = c;
+    return min_val;
+}
+
 // RGB -> H 转换表
 int HLUT[256][256][256];    //RGB-H 转换表，S,I值分别用公式计算
+
+// 预分配缓冲区，避免频繁内存分配
+static unsigned char* pBuffer = nullptr;
 
 // 机器人形状坐标
 int robot_xy[361][12][2];             //机器人方向图像关键点坐标
@@ -70,14 +82,28 @@ DisplayDlg::DisplayDlg(QWidget *parent)
         robot_xy[i][11][1] = (robot_xy[i][4][1] + robot_xy[i][7][1]) / 2;
     }
 
-    // 初始化RGB-H转换表
-    for (int r = 0; r < 256; r++)
+    // 初始化RGB-H转换表，从文件加载
+    QFile file("resources/HLUT.dat");
+    if (file.open(QIODevice::ReadOnly))
     {
-        for (int g = 0; g < 256; g++)
+        QByteArray data = file.readAll();
+        if (data.size() >= 256 * 256 * 256 * sizeof(int))
         {
-            for (int b = 0; b < 256; b++)
+            memcpy(HLUT, data.data(), 256 * 256 * 256 * sizeof(int));
+        }
+        file.close();
+    }
+    else
+    {
+        // 如果文件加载失败，初始化为0
+        for (int r = 0; r < 256; r++)
+        {
+            for (int g = 0; g < 256; g++)
             {
-                HLUT[r][g][b] = 0;
+                for (int b = 0; b < 256; b++)
+                {
+                    HLUT[r][g][b] = 0;
+                }
             }
         }
     }
@@ -100,11 +126,14 @@ DisplayDlg::DisplayDlg(QWidget *parent)
     ballInfor.found = false;
     ballBk = ballInfor;
 
+    // 预加载车号图像，避免切换标签页时从磁盘加载延迟
+    m_carNumPixmap = QPixmap("resources/carnum.bmp");
+
     initUI();
 }
 
 // 功能：释放图像数据和定时器资源
- 
+
 DisplayDlg::~DisplayDlg()
 {
     if (m_pDispBitmap)
@@ -115,6 +144,9 @@ DisplayDlg::~DisplayDlg()
         delete m_grabTimer;
     if (fpsTimer)
         delete fpsTimer;
+    // 释放预分配的缓冲区
+    if (pBuffer)
+        delete[] pBuffer;
 }
 
 // 功能：创建显示区域、帧率标签和定时器
@@ -170,7 +202,7 @@ void DisplayDlg::initUI()
 void DisplayDlg::ShowSingle()
 {
     GrabSingle();
-    QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
+    QImage image(m_pDispSingle, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
     QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
     displayLabel->setPixmap(pixmap);
 }
@@ -179,20 +211,45 @@ void DisplayDlg::ShowSingle()
  
 void DisplayDlg::ShowDynamic()
 {
-    if (m_status != STATUS::Game) {
-        if (m_status == STATUS::RunTest || m_status == STATUS::Prepare || m_status == STATUS::Stop) {
-            Stop();
+    // 确保停止之前的状态
+    Stop();
+    
+    // 确保摄像头已打开
+    Camera *pCamera = Camera::GetInstance();
+    if (!pCamera->IsOpen()) {
+        if (!pCamera->Open()) {
+            // 如果摄像头打开失败，显示错误信息
+            displayLabel->setText("无法打开摄像头");
+            return;
         }
-        m_status = STATUS::Display;
-        // 立即获取并显示一张图像，确保切换标签页时能立即看到摄像头图像
-        if (GrabSingle()) {
-            QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-            QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
-            displayLabel->setPixmap(pixmap);
-            m_DisplayWatch.start();
-        }
-        m_grabTimer->start(500); // 与MFC版本TIMER_SPACE_NUM保持一致
     }
+    
+    // 确保摄像头处于抓取状态
+    if (!pCamera->IsGrabbing()) {
+        pCamera->StartGrabbing();
+    }
+    
+    // 设置状态为显示模式
+    m_status = STATUS::Display;
+    
+    // 开始计时
+    m_DisplayWatch.start();
+    
+    // 启动抓取线程
+    m_grabTimer->start(50); // 与MFC版本保持一致
+    
+    // 立即获取并显示一帧图像，避免切换时出现黑屏或显示旧图像
+    unsigned char* tempBuffer = new unsigned char[DISPLAY_W * DISPLAY_H * 3];
+    if (pCamera->RetrieveResult(tempBuffer)) {
+        pCamera->ConvertBitmap(m_pDispBitmap, tempBuffer, DISPLAY_W, DISPLAY_H);
+        QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
+        QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+        displayLabel->setPixmap(pixmap);
+    }
+    delete[] tempBuffer;
+    
+    // 处理所有待处理事件，确保界面及时响应
+    QCoreApplication::processEvents();
 }
 
 /**
@@ -205,11 +262,9 @@ void DisplayDlg::ShowCarNum()
     if (pCamera->IsGrabbing()) {
         this->Stop();
     }
-    // 加载并显示车号图像
-    QImage carNumImage("resources/carnum.bmp");
-    if (!carNumImage.isNull()) {
-        QPixmap pixmap = QPixmap::fromImage(carNumImage);
-        displayLabel->setPixmap(pixmap);
+    // 使用预加载的车号图像，避免从磁盘加载延迟
+    if (!m_carNumPixmap.isNull()) {
+        displayLabel->setPixmap(m_carNumPixmap);
     } else {
         // 如果图像加载失败，显示默认文本
         displayLabel->setText("车号显示");
@@ -320,10 +375,20 @@ void DisplayDlg::ShowInitGame()
     ballBk.x = 0.0;
     ballBk.y = 0.0;
     ballBk.theta = 0.0;
+    
+    // 清除足球轨迹
+    ClearBallTrail();
+    
     m_pIdentify = m_pDispSingle;
     IdentifyAll();
     m_status = STATUS::Prepare;
-    update();
+    
+    // 启动定时器，持续更新画面
+    if (!m_grabTimer->isActive()) {
+        m_grabTimer->start(33); // 约30fps
+    }
+    m_DisplayWatch.start();
+    this->repaint(); // 使用repaint立即重绘
 }
 
 // 功能：设置游戏状态，启动游戏逻辑
@@ -335,18 +400,20 @@ void DisplayDlg::ShowStartGame()
 }
 
 //功能：停止定时器，设置停止状态
- 
+
 void DisplayDlg::Stop()
 {
     if (!m_bErrorSign) {
-        bool needWait = false;
-        if (m_status == STATUS::Game || m_status == STATUS::RunTest || m_status == STATUS::Display || m_status == STATUS::RunTestSeg) {
-            m_status = STATUS::PrepareStop;
-            needWait = true;
-            m_grabTimer->stop();
+        // 停止定时器
+        m_grabTimer->stop();
+        
+        // 停止摄像头抓取
+        Camera *pCamera = Camera::GetInstance();
+        if (pCamera->IsGrabbing()) {
+            pCamera->StopGrabbing();
         }
-        if (needWait) {
-        }
+        
+        // 设置状态为停止
         m_status = STATUS::Stop;
     }
 }
@@ -366,9 +433,33 @@ void DisplayDlg::paintEvent(QPaintEvent *event)
 
     // 只在比赛相关状态下绘制足球场背景和机器人
     if (m_status == STATUS::Game || m_status == STATUS::Prepare) {
-        QPainter painter(displayLabel);
-        DrawAll(&painter);
+        QPixmap pixmap(DISPLAY_W, DISPLAY_H);
+        pixmap.fill(Qt::transparent);
+        QPainter painter(&pixmap);
+        
+        // 绘制足球场背景
+        painter.drawImage(0, 0, m_groundImage);
+        
+        // 绘制机器人
+        DrawRobot(&painter);
+        
+        // 绘制对手
+        DrawOpp(&painter);
+        
+        // 绘制球
+        DrawBall(&painter);
+        
+        // 设置绘制好的pixmap
+        displayLabel->setPixmap(pixmap);
     }
+    // 在其他状态下（如Display、Stop等），不进行任何绘制操作，避免干扰摄像头图像显示
+}
+
+// 功能：清除足球轨迹
+
+void DisplayDlg::ClearBallTrail()
+{
+    m_ballTrail.clear();
 }
 
 // 功能：处理颜色设置时的鼠标拖拽操作
@@ -405,26 +496,35 @@ void DisplayDlg::mousePressEvent(QMouseEvent *event)
 }
 
 //功能：定时获取并处理图像
- 
+
 void DisplayDlg::onTimer()
 {
-    if (m_status == STATUS::Display || m_status == STATUS::RunTest || m_status == STATUS::RunTestSeg)
-    {
-        if (GrabSingle())
-        {
-            ProcessImage(m_pDispBitmap);
-            update();
+    Camera *pCamera = Camera::GetInstance();
+    if (!pCamera->IsOpen()) {
+        if (!pCamera->Open()) {
+            return;
         }
     }
-    else if (m_status == STATUS::Game)
-    {
-        if (GrabSingle())
-        {
-            ProcessImage(m_pDispBitmap);
-            update();
-        }
+    if (!pCamera->IsGrabbing()) {
+        pCamera->StartGrabbing();
+    }
+
+    // 预分配缓冲区，避免频繁内存分配
+    if (!pBuffer) {
+        pBuffer = new unsigned char[DISPLAY_W * DISPLAY_H * 3];
+    }
+    
+    if (pCamera->RetrieveResult(pBuffer)) {
+        ProcessImage(pBuffer);
+    }
+
+    if (m_status == STATUS::PrepareStop) {
+        pCamera->StartGrabbing();
+        m_status = STATUS::Stop;
     }
 }
+
+
 
 //功能：计算并显示实时帧率
  
@@ -440,10 +540,9 @@ void DisplayDlg::updateFPS()
 
 void DisplayDlg::ProcessImage(unsigned char *pBmp)
 {
-    // pBmp已经是RGB格式的数据（由GrabOne转换后的结果）
-    // 直接复制到m_pDispBitmap进行显示
     Camera *pCamera = Camera::GetInstance();
-    memcpy(m_pDispBitmap, pBmp, DISPLAY_W * DISPLAY_H * 3);
+    // 转换图像格式
+    pCamera->ConvertBitmap(m_pDispBitmap, pBmp, m_ImageSize.width(), m_ImageSize.height());
 
     switch (m_status) {
     case STATUS::Display:
@@ -464,10 +563,7 @@ void DisplayDlg::ProcessImage(unsigned char *pBmp)
         break;
     case STATUS::RunTestSeg:
         {
-            this->StartTest();
-            QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-            QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
-            displayLabel->setPixmap(pixmap);
+            this->IdentifyTest();
             m_DisplayAvg.Add(m_DisplayWatch.elapsed());
             m_DisplayWatch.restart();
         }
@@ -489,16 +585,17 @@ void DisplayDlg::ProcessImage(unsigned char *pBmp)
 bool DisplayDlg::GrabSingle()
 {
     Camera *pCamera = Camera::GetInstance();
+    if (pCamera->IsGrabbing()) {
+        this->Stop();
+    }
+    // 避免频繁开关摄像头，只在未打开时打开
     if (!pCamera->IsOpen()) {
         if (!pCamera->Open()) {
             return false;
         }
-        pCamera->StartGrabbing();
     }
-    if (!pCamera->IsGrabbing()) {
-        pCamera->StartGrabbing();
-    }
-    return pCamera->GrabOne(m_pDispBitmap);
+    bool result = pCamera->GrabOne(m_pDispSingle);
+    return result;
 }
 
 //功能：从栈中弹出一个坐标点
@@ -620,6 +717,29 @@ void DisplayDlg::DrawBall(QPainter *painter)
     {
         int x = (int)(ballInfor.x * 2.5) + 45;
         int y = (int)(ballInfor.y * 2.5) + 15;
+        
+        // 添加当前位置到轨迹
+        m_ballTrail.push_back(QPoint(x, y));
+        
+        // 限制轨迹长度
+        if (m_ballTrail.size() > MAX_TRAIL_LENGTH)
+        {
+            m_ballTrail.erase(m_ballTrail.begin());
+        }
+        
+        // 绘制轨迹
+        if (m_ballTrail.size() > 1)
+        {
+            painter->setPen(QPen(Qt::yellow, 2, Qt::DotLine));
+            for (size_t i = 1; i < m_ballTrail.size(); i++)
+            {
+                painter->drawLine(m_ballTrail[i-1], m_ballTrail[i]);
+            }
+        }
+        
+        // 绘制足球
+        painter->setPen(QPen(Qt::red, 1));
+        painter->setBrush(QBrush(Qt::red));
         painter->drawEllipse(x - 4, y - 4, 8, 8);
     }
 }

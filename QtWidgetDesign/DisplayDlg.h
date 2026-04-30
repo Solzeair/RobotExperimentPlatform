@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <QWidget>
 #include <QVBoxLayout>
@@ -8,6 +8,8 @@
 #include <QElapsedTimer>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QFile>
+#include <QIODevice>
 #include <vector>
 #include<algorithm>
 /*
@@ -170,6 +172,7 @@ private:
     void DrawOpp(QPainter *painter);
     void DrawBall(QPainter *painter);
     void DrawRobot(QPainter *painter);
+    void ClearBallTrail(); // 清除足球轨迹
 
 private:
     // 图像
@@ -190,6 +193,11 @@ private:
 
     // 绘图
     QImage m_groundImage;
+    QPixmap m_carNumPixmap; // 车号图像（预加载）
+    
+    // 足球轨迹
+    std::vector<QPoint> m_ballTrail;
+    static const int MAX_TRAIL_LENGTH = 50; // 轨迹最大长度
 
     // 目标识别
     bool ObjectFound[12];

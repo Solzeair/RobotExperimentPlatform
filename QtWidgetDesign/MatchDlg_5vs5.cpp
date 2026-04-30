@@ -1,11 +1,14 @@
-﻿/*
+/*
 * 5v5比赛对话框源文件
 * 写作人 李青
 * 功能 5v5比赛控制界面逻辑实现，包含开球类型、阵型布置、点球及战术选择功能响应。
-* 未完成
+* 策略通过动态链接库(DLL)形式实现，本文件只声明接口和传递参数
 */
 #include "MatchDlg_5vs5.h"
+#include "DisplayDlg.h"
 #include "Debug.h"
+#include <QMessageBox>
+#include <QDebug>
 
 MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
     : QWidget(parent)
@@ -13,6 +16,7 @@ MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
     , m_BallLost(true)
     , m_checkinfo(false)
     , m_IdentifyOpp(true)
+    , m_CorrectPatch(false)
     , m_return2pt(false)
     , m_dqsmd(1)
     , m_area(0)
@@ -21,38 +25,181 @@ MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
     , m_exchangerobot1(0)
     , m_exchangerobot2(0)
     , m_dan(0)
+    , StrategyNum(0)
+    , m_pDisplayDlg(nullptr)
+    , m_library(nullptr)
+    , m_strategy(nullptr)
+    , m_createStrategy(nullptr)
+    , m_destroyStrategy(nullptr)
+    , m_setParameter(nullptr)
+    , m_getParameter(nullptr)
+    , m_initializeStrategy(nullptr)
+    , m_setOurGoalOnRight(nullptr)
+    , m_setOurKickoff(nullptr)
+    , m_setMatchState(nullptr)
+    , m_setFormationType(nullptr)
+    , m_setKickoffType(nullptr)
+    , m_setPenaltyKickMode(nullptr)
+    , m_selectStrategy(nullptr)
+    , m_parkRobotsFunc(nullptr)
+    , m_saveConfigFunc(nullptr)
+    , m_loadConfigFunc(nullptr)
+    , m_isMatchRunning(false)
+    , radioMiddleDirect(nullptr)
+    , radioCenterGoalkeeper(nullptr)
+    , m_danShuangGroup(nullptr)
+    , m_kickTeamGroup(nullptr)
+    , m_areaGroup(nullptr)
+    , m_dqDirectGroup(nullptr)
+    , m_goalkeeperGroup(nullptr)
+    , btnPrepare(nullptr)
+    , btnExchangeRole(nullptr)
+    , lineEditNewCar(nullptr)
+    , lineEditExchangeRole(nullptr)
 {
-    // 设置大小策略为可伸缩
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    
+
     initUI();
+    loadStrategyDLL("RobotStrategyDll.dll");
+    
+    // 初始状态：禁用开始比赛按钮
+    btnStartMatch->setEnabled(false);
 }
 
 MatchDlg_5vs5::~MatchDlg_5vs5()
-{}
+{
+    unloadStrategyDLL();
+}
+
+void MatchDlg_5vs5::setDisplayDlg(DisplayDlg* displayDlg)
+{
+    m_pDisplayDlg = displayDlg;
+}
+
+bool MatchDlg_5vs5::loadStrategyDLL(const QString& dllPath)
+{
+    unloadStrategyDLL();
+
+    m_library = new QLibrary(dllPath, this);
+
+    if (!m_library->load()) {
+        qDebug() << "Failed to load DLL:" << m_library->errorString();
+        return false;
+    }
+
+    // 解析DLL函数指针
+    m_createStrategy = (CreateStrategyFunc)m_library->resolve("CreateStrategy");
+    m_destroyStrategy = (DestroyStrategyFunc)m_library->resolve("DestroyStrategy");
+    m_setParameter = (SetParameterFunc)m_library->resolve("setParameter");
+    m_getParameter = (GetParameterFunc)m_library->resolve("getParameter");
+    m_initializeStrategy = (InitializeStrategyFunc)m_library->resolve("InitializeStrategy");
+    m_setOurGoalOnRight = (SetOurGoalOnRightFunc)m_library->resolve("setOurGoalOnRight");
+    m_setOurKickoff = (SetOurKickoffFunc)m_library->resolve("setOurKickoff");
+    m_setMatchState = (SetMatchStateFunc)m_library->resolve("SetMatchState");
+    m_setFormationType = (SetFormationTypeFunc)m_library->resolve("SetFormationType");
+    m_setKickoffType = (SetKickoffTypeFunc)m_library->resolve("SetKickoffType");
+    m_setPenaltyKickMode = (SetPenaltyKickModeFunc)m_library->resolve("SetPenaltyKickMode");
+    m_selectStrategy = (SelectStrategyFunc)m_library->resolve("SelectStrategy");
+    m_parkRobotsFunc = (ParkRobotsFunc)m_library->resolve("ParkRobots");
+    m_saveConfigFunc = (SaveConfigFunc)m_library->resolve("saveConfig");
+    m_loadConfigFunc = (LoadConfigFunc)m_library->resolve("loadConfig");
+
+    if (!m_createStrategy || !m_destroyStrategy) {
+        qDebug() << "Failed to resolve required functions!";
+        return false;
+    }
+
+    // 创建策略实例
+    m_strategy = m_createStrategy(0);
+    if (!m_strategy) {
+        qDebug() << "Failed to create strategy!";
+        return false;
+    }
+
+    // 设置默认参数
+    if (m_setParameter) {
+        m_setParameter(m_strategy, "max_speed", 75.0);
+        m_setParameter(m_strategy, "kp_pos", 12.0);
+        m_setParameter(m_strategy, "kp_angle", 22.0);
+    }
+
+    qDebug() << "DLL loaded successfully!";
+    return true;
+}
+
+void MatchDlg_5vs5::unloadStrategyDLL()
+{
+    if (m_destroyStrategy && m_strategy) {
+        m_destroyStrategy(m_strategy);
+        m_strategy = nullptr;
+    }
+
+    if (m_library) {
+        m_library->unload();
+        delete m_library;
+        m_library = nullptr;
+    }
+}
+
+void MatchDlg_5vs5::applyMatchParameters()
+{
+    if (!m_strategy) {
+        return;
+    }
+
+    // 阵型 (0=单后卫, 1=双后卫)
+    if (m_setFormationType) {
+        m_setFormationType(m_strategy, m_dan);
+    }
+
+    // 球门方向 (左半场=0, 右半场=1)
+    if (m_setOurGoalOnRight) {
+        m_setOurGoalOnRight(m_strategy, (m_area == 1));
+    }
+
+    // 开球方 (我方=1, 对方=0)
+    if (m_setOurKickoff) {
+        m_setOurKickoff(m_strategy, (m_attack == 1));
+    }
+
+    // 开球方式 (0=普通, 1=点球, 其他值根据MFC版本扩展)
+    if (m_setKickoffType) {
+        m_setKickoffType(m_strategy, m_kick);
+    }
+
+    // 点球模式 (m_dqdirect=点球方向, m_dqsmd=点球模式)
+    if (m_setPenaltyKickMode) {
+        m_setPenaltyKickMode(m_strategy, m_dqdirect, m_dqsmd);
+    }
+
+    // 策略选择
+    if (m_selectStrategy) {
+        m_selectStrategy(m_strategy, StrategyNum);
+    }
+
+    // 设置归位参数
+    if (m_setParameter) {
+        m_setParameter(m_strategy, "return2pt", m_return2pt ? 1.0 : 0.0);
+    }
+}
 
 void MatchDlg_5vs5::initUI()
 {
-    // 设置字体为楷体，12号，加粗
     QFont font("楷体", 12, QFont::Bold);
     setFont(font);
-    
-    // 创建主布局
+
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(20, 0, 20, 20);
     mainLayout->setSpacing(15);
-    
-    // 创建主控制布局
+
     QVBoxLayout *controlLayout = new QVBoxLayout();
-    // 设置控件之间间隔为18像素，让内容排列更松散
     controlLayout->setSpacing(18);
-    
-    // 标题 "5vs5比赛控制"
+
     QLabel *titleLabel = new QLabel("5vs5比赛控制", this);
     titleLabel->setFont(font);
     controlLayout->addWidget(titleLabel);
     controlLayout->setAlignment(titleLabel, Qt::AlignTop);
-    
+
     // 单双后卫
     QHBoxLayout *danShuangLayout = new QHBoxLayout();
     QLabel *danShuangLabel = new QLabel("单双后卫", this);
@@ -62,11 +209,15 @@ void MatchDlg_5vs5::initUI()
     radioDan->setFont(font);
     radioShuang = new QRadioButton("双后卫", this);
     radioShuang->setFont(font);
+    // 添加到ButtonGroup实现单选互斥
+    m_danShuangGroup = new QButtonGroup(this);
+    m_danShuangGroup->addButton(radioDan, 0);
+    m_danShuangGroup->addButton(radioShuang, 1);
     danShuangLayout->addWidget(danShuangLabel);
     danShuangLayout->addWidget(radioDan);
     danShuangLayout->addWidget(radioShuang);
     controlLayout->addLayout(danShuangLayout);
-    
+
     // 开球方
     QHBoxLayout *kickTeamLayout = new QHBoxLayout();
     QLabel *kickTeamLabel = new QLabel("开球方", this);
@@ -76,11 +227,15 @@ void MatchDlg_5vs5::initUI()
     radioAttack->setFont(font);
     radioDefend = new QRadioButton("对方", this);
     radioDefend->setFont(font);
+    // 添加到ButtonGroup实现单选互斥
+    m_kickTeamGroup = new QButtonGroup(this);
+    m_kickTeamGroup->addButton(radioAttack, 0);
+    m_kickTeamGroup->addButton(radioDefend, 1);
     kickTeamLayout->addWidget(kickTeamLabel);
     kickTeamLayout->addWidget(radioAttack);
     kickTeamLayout->addWidget(radioDefend);
     controlLayout->addLayout(kickTeamLayout);
-    
+
     // 左右半场
     QHBoxLayout *areaLayout = new QHBoxLayout();
     QLabel *areaLabel = new QLabel("左右半场", this);
@@ -90,18 +245,22 @@ void MatchDlg_5vs5::initUI()
     radioLeftArea->setFont(font);
     radioRightArea = new QRadioButton("右半场", this);
     radioRightArea->setFont(font);
+    // 添加到ButtonGroup实现单选互斥
+    m_areaGroup = new QButtonGroup(this);
+    m_areaGroup->addButton(radioLeftArea, 0);
+    m_areaGroup->addButton(radioRightArea, 1);
     areaLayout->addWidget(areaLabel);
     areaLayout->addWidget(radioLeftArea);
     areaLayout->addWidget(radioRightArea);
     controlLayout->addLayout(areaLayout);
-    
+
     // 开球方式
     QGroupBox *kickGroupBox = new QGroupBox("开球方式", this);
     kickGroupBox->setFont(font);
     QGridLayout *kickGridLayout = new QGridLayout(kickGroupBox);
     kickGridLayout->setContentsMargins(20, 20, 20, 20);
     kickGridLayout->setSpacing(10);
-    
+
     radioNormalKick = new QRadioButton("普通", kickGroupBox);
     radioNormalKick->setChecked(true);
     radioNormalKick->setFont(font);
@@ -119,7 +278,7 @@ void MatchDlg_5vs5::initUI()
     radioLostCarTest->setFont(font);
     QRadioButton *radioTest = new QRadioButton("性能测试", kickGroupBox);
     radioTest->setFont(font);
-    
+
     kickGridLayout->addWidget(radioNormalKick, 0, 0);
     kickGridLayout->addWidget(radioPenaltyKick, 0, 1);
     kickGridLayout->addWidget(radioGoalKick, 0, 2);
@@ -128,43 +287,51 @@ void MatchDlg_5vs5::initUI()
     kickGridLayout->addWidget(radioShouqiu, 1, 2);
     kickGridLayout->addWidget(radioLostCarTest, 2, 0);
     kickGridLayout->addWidget(radioTest, 2, 1);
-    
+
     controlLayout->addWidget(kickGroupBox);
-    
+
     // 点球选择
     QHBoxLayout *dqSelectLayout = new QHBoxLayout();
     QLabel *dqSelectLabel = new QLabel("点球选择", this);
     dqSelectLabel->setFont(font);
     radioLeftDirect = new QRadioButton("左晃射门", this);
     radioLeftDirect->setFont(font);
-    QRadioButton *radioMiddleDirect = new QRadioButton("随机直冲", this);
+    radioMiddleDirect = new QRadioButton("随机直冲", this);
     radioMiddleDirect->setFont(font);
     radioMiddleDirect->setChecked(true);
     radioRightDirect = new QRadioButton("右晃射门", this);
     radioRightDirect->setFont(font);
+    m_dqDirectGroup = new QButtonGroup(this);
+    m_dqDirectGroup->addButton(radioLeftDirect, 0);
+    m_dqDirectGroup->addButton(radioMiddleDirect, 1);
+    m_dqDirectGroup->addButton(radioRightDirect, 2);
     dqSelectLayout->addWidget(dqSelectLabel);
     dqSelectLayout->addWidget(radioLeftDirect);
     dqSelectLayout->addWidget(radioMiddleDirect);
     dqSelectLayout->addWidget(radioRightDirect);
     controlLayout->addLayout(dqSelectLayout);
-    
+
     // 守门选择
     QHBoxLayout *goalkeeperLayout = new QHBoxLayout();
     QLabel *goalkeeperLabel = new QLabel("守门选择", this);
     goalkeeperLabel->setFont(font);
     radioLeftGoalkeeper = new QRadioButton("左", this);
     radioLeftGoalkeeper->setFont(font);
-    QRadioButton *radioCenterGoalkeeper = new QRadioButton("中", this);
+    radioCenterGoalkeeper = new QRadioButton("中", this);
     radioCenterGoalkeeper->setFont(font);
     radioCenterGoalkeeper->setChecked(true);
     radioRightGoalkeeper = new QRadioButton("右", this);
     radioRightGoalkeeper->setFont(font);
+    m_goalkeeperGroup = new QButtonGroup(this);
+    m_goalkeeperGroup->addButton(radioLeftGoalkeeper, 0);
+    m_goalkeeperGroup->addButton(radioCenterGoalkeeper, 1);
+    m_goalkeeperGroup->addButton(radioRightGoalkeeper, 2);
     goalkeeperLayout->addWidget(goalkeeperLabel);
     goalkeeperLayout->addWidget(radioLeftGoalkeeper);
     goalkeeperLayout->addWidget(radioCenterGoalkeeper);
     goalkeeperLayout->addWidget(radioRightGoalkeeper);
     controlLayout->addLayout(goalkeeperLayout);
-    
+
     // 细节处理
     QHBoxLayout *detailsLayout = new QHBoxLayout();
     QLabel *detailsLabel = new QLabel("细节处理", this);
@@ -179,7 +346,7 @@ void MatchDlg_5vs5::initUI()
     detailsLayout->addWidget(checkColorError);
     detailsLayout->addWidget(checkIdentifyOpponent);
     controlLayout->addLayout(detailsLayout);
-    
+
     // 细节处理第二行
     QHBoxLayout *detailsRow2Layout = new QHBoxLayout();
     QCheckBox *checkRobotCheck = new QCheckBox("RobotCheck", this);
@@ -189,10 +356,10 @@ void MatchDlg_5vs5::initUI()
     detailsRow2Layout->addWidget(checkRobotCheck);
     detailsRow2Layout->addWidget(checkReturn);
     controlLayout->addLayout(detailsRow2Layout);
-    
+
     // 比赛控制按钮
     QHBoxLayout *matchControlLayout = new QHBoxLayout();
-    QPushButton *btnPrepare = new QPushButton("初始预备", this);
+    btnPrepare = new QPushButton("初始预备", this);
     btnPrepare->setFont(font);
     btnStartMatch = new QPushButton("开始比赛", this);
     btnStartMatch->setFont(font);
@@ -202,7 +369,7 @@ void MatchDlg_5vs5::initUI()
     matchControlLayout->addWidget(btnStartMatch);
     matchControlLayout->addWidget(btnStopMatch);
     controlLayout->addLayout(matchControlLayout);
-    
+
     // 策略选择
     QHBoxLayout *strategyLayout = new QHBoxLayout();
     QLabel *strategyLabel = new QLabel("策略", this);
@@ -214,27 +381,27 @@ void MatchDlg_5vs5::initUI()
     strategyLayout->addWidget(strategyLabel);
     strategyLayout->addWidget(comboStrategy);
     controlLayout->addLayout(strategyLayout);
-    
+
     // 角色替换
     QHBoxLayout *roleExchangeLayout = new QHBoxLayout();
     QLabel *roleExchangeLabel = new QLabel("角色替换", this);
     roleExchangeLabel->setFont(font);
     QLabel *newCarLabel = new QLabel("新车", this);
     newCarLabel->setFont(font);
-    QLineEdit *lineEditNewCar = new QLineEdit(this);
+    lineEditNewCar = new QLineEdit(this);
     lineEditNewCar->setFont(font);
-    lineEditNewCar->setText("0");
+    lineEditNewCar->setText("1");
     lineEditNewCar->setFixedWidth(50);
     QLabel *exchangeRoleLabel = new QLabel("替换角色", this);
     exchangeRoleLabel->setFont(font);
-    QLineEdit *lineEditExchangeRole = new QLineEdit(this);
+    lineEditExchangeRole = new QLineEdit(this);
     lineEditExchangeRole->setFont(font);
-    lineEditExchangeRole->setText("0");
+    lineEditExchangeRole->setText("1");
     lineEditExchangeRole->setFixedWidth(50);
-    QPushButton *btnExchangeRole = new QPushButton("替换", this);
+    btnExchangeRole = new QPushButton("替换", this);
     btnExchangeRole->setFont(font);
     btnExchangeRole->setFixedWidth(60);
-    
+
     roleExchangeLayout->addWidget(roleExchangeLabel);
     roleExchangeLayout->addWidget(newCarLabel);
     roleExchangeLayout->addWidget(lineEditNewCar);
@@ -242,16 +409,16 @@ void MatchDlg_5vs5::initUI()
     roleExchangeLayout->addWidget(lineEditExchangeRole);
     roleExchangeLayout->addWidget(btnExchangeRole);
     controlLayout->addLayout(roleExchangeLayout);
-    
+
     mainLayout->addLayout(controlLayout);
-    
+
     // 连接信号槽
     connect(btnStartMatch, SIGNAL(clicked()), this, SLOT(onButtonStart()));
     connect(btnStopMatch, SIGNAL(clicked()), this, SLOT(onButtonStop()));
     connect(comboStrategy, SIGNAL(currentIndexChanged(int)), this, SLOT(onStrategyChanged(int)));
     connect(btnPrepare, SIGNAL(clicked()), this, SLOT(onButtonPrepare()));
     connect(btnExchangeRole, SIGNAL(clicked()), this, SLOT(onButtonExchangeRole()));
-    
+
     // 连接单选按钮
     connect(radioDan, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
     connect(radioShuang, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
@@ -262,67 +429,103 @@ void MatchDlg_5vs5::initUI()
     connect(radioNormalKick, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
     connect(radioPenaltyKick, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
     connect(radioLeftDirect, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
+    connect(radioMiddleDirect, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
     connect(radioRightDirect, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
     connect(radioLeftGoalkeeper, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
+    connect(radioCenterGoalkeeper, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
     connect(radioRightGoalkeeper, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
-    
-
 }
-
-
 
 void MatchDlg_5vs5::onButtonStart()
 {
-    // TODO: 开始比赛
+    if (!m_strategy) {
+        QMessageBox::warning(this, "错误", "策略DLL未加载");
+        Debug::get()->print("错误：策略DLL未加载");
+        return;
+    }
+
+    // 读取界面参数
+    m_attack = radioAttack->isChecked() ? 1 : 0;
+    m_area = radioLeftArea->isChecked() ? 0 : 1;
+    m_dan = radioDan->isChecked() ? 0 : 1;
+    m_kick = radioNormalKick->isChecked() ? 0 : (radioPenaltyKick->isChecked() ? 1 : 0);
+
+    if (radioLeftDirect->isChecked())
+        m_dqdirect = 0;
+    else if (radioRightDirect->isChecked())
+        m_dqdirect = 2;
+    else
+        m_dqdirect = 1;
+
+    // 初始化比赛场景
+    if (m_initializeStrategy) {
+        int isFirstHalf = (m_area == 0) ? 1 : 0;
+        int isOurKickoff = (m_attack == 1) ? 1 : 0;
+        m_initializeStrategy(m_strategy, 0, 0, 300, isFirstHalf, isOurKickoff);
+    }
+
+    // 应用比赛参数到DLL
+    applyMatchParameters();
+
+    m_isMatchRunning = true;
+    qDebug() << "Match started!";
+    QMessageBox::information(this, "比赛开始", "比赛已开始");
+    Debug::get()->print("比赛开始：比赛已启动，机器人进入比赛状态");
+    
+    // 禁用开始比赛和初始预备按钮
+    btnStartMatch->setEnabled(false);
+    if (btnPrepare) {
+        btnPrepare->setEnabled(false);
+    }
+    
+    // 归位选项设为false
+    m_return2pt = false;
 }
 
 void MatchDlg_5vs5::onButtonStop()
 {
-    // TODO: 结束比赛
+    m_isMatchRunning = false;
+    qDebug() << "Match stopped!";
+    Debug::get()->print("停止：比赛已停止，机器人进入待命状态");
+    
+    // 启用初始预备按钮
+    if (btnPrepare) {
+        btnPrepare->setEnabled(true);
+    }
 }
 
 void MatchDlg_5vs5::onStrategyChanged(int index)
 {
-    // TODO: 策略选择变化
-    if (index == 0) {
-        Debug::get()->print(L"Strategy_1");
-    } else if (index == 1) {
-        Debug::get()->print(L"Strategy_2");
+    StrategyNum = index;
+
+    if (m_selectStrategy && m_strategy) {
+        m_selectStrategy(m_strategy, index);
     }
+
+    qDebug() << "Strategy changed to:" << index;
+    Debug::get()->print(QString("策略选择：已切换到%1号策略").arg(index + 1));
 }
 
 void MatchDlg_5vs5::onButtonPrepare()
 {
-    // TODO: 初始预备
-}
+    if (!m_strategy) {
+        QMessageBox::warning(this, "错误", "策略DLL未加载");
+        Debug::get()->print("错误：策略DLL未加载");
+        return;
+    }
 
-void MatchDlg_5vs5::onButtonExchangeRole()
-{
-    // TODO: 角色替换
-}
+    // 根据单双后卫选择策略
+    if (radioDan->isChecked()) {
+        Debug::get()->print("策略选择：单后卫策略");
+    } else {
+        Debug::get()->print("策略选择：双后卫策略");
+    }
 
-void MatchDlg_5vs5::onRadioButtonClicked()
-{
-    // TODO: 处理单选按钮点击
-    if (radioDan->isChecked())
-        m_dan = 0;
-    else if (radioShuang->isChecked())
-        m_dan = 1;
-    
-    if (radioAttack->isChecked())
-        m_attack = 1;
-    else if (radioDefend->isChecked())
-        m_attack = 0;
-    
-    if (radioLeftArea->isChecked())
-        m_area = 0;
-    else if (radioRightArea->isChecked())
-        m_area = 1;
-    
-    if (radioNormalKick->isChecked())
-        m_kick = 0;
-    else if (radioPenaltyKick->isChecked())
-        m_kick = 1;
+    // 更新界面参数
+    m_attack = radioAttack->isChecked() ? 1 : 0;
+    m_area = radioLeftArea->isChecked() ? 0 : 1;
+    m_dan = radioDan->isChecked() ? 0 : 1;
+    m_kick = radioNormalKick->isChecked() ? 0 : (radioPenaltyKick->isChecked() ? 1 : 0);
     
     if (radioLeftDirect->isChecked())
         m_dqdirect = 0;
@@ -330,4 +533,78 @@ void MatchDlg_5vs5::onRadioButtonClicked()
         m_dqdirect = 2;
     else
         m_dqdirect = 1;
+
+    // 应用比赛参数到DLL
+    applyMatchParameters();
+
+    if (m_parkRobotsFunc) {
+        m_parkRobotsFunc(m_strategy);
+    }
+
+    if (m_pDisplayDlg) {
+        m_pDisplayDlg->ShowInitGame();
+    }
+
+    btnStartMatch->setEnabled(true);
+    Debug::get()->print("初始预备：机器人已归位，比赛准备就绪");
+}
+
+void MatchDlg_5vs5::onButtonExchangeRole()
+{
+    if (!lineEditNewCar || !lineEditExchangeRole) {
+        Debug::get()->print("错误：找不到输入控件");
+        return;
+    }
+    
+    int newCar = lineEditNewCar->text().toInt();
+    int exchangeRole = lineEditExchangeRole->text().toInt();
+    
+    // 验证输入
+    if (newCar < 1 || newCar > 5 || exchangeRole < 1 || exchangeRole > 5) {
+        QMessageBox::warning(this, "错误", "输入值无效，请输入1-5之间的数字");
+        Debug::get()->print("错误：角色替换输入值无效");
+        return;
+    }
+    
+    // 执行角色替换
+    m_exchangerobot1 = newCar;
+    m_exchangerobot2 = exchangeRole;
+    
+    // 显示提示
+    QString message = QString("角色替换：将新车 %1 替换为角色 %2").arg(newCar).arg(exchangeRole);
+    Debug::get()->print(message);
+    QMessageBox::information(this, "角色替换", message);
+}
+void MatchDlg_5vs5::onRadioButtonClicked()
+{
+    // 更新数据变量
+    if (radioDan->isChecked())
+        m_dan = 0;
+    else if (radioShuang->isChecked())
+        m_dan = 1;
+
+    if (radioAttack->isChecked())
+        m_attack = 1;
+    else if (radioDefend->isChecked())
+        m_attack = 0;
+
+    if (radioLeftArea->isChecked())
+        m_area = 0;
+    else if (radioRightArea->isChecked())
+        m_area = 1;
+
+    if (radioNormalKick->isChecked())
+        m_kick = 0;
+    else if (radioPenaltyKick->isChecked())
+        m_kick = 1;
+
+    if (radioLeftDirect->isChecked())
+        m_dqdirect = 0;
+    else if (radioRightDirect->isChecked())
+        m_dqdirect = 2;
+    else
+        m_dqdirect = 1;
+
+    // 实时应用设置到策略
+    applyMatchParameters();
 }

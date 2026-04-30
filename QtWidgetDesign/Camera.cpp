@@ -1,10 +1,9 @@
-﻿#include "Camera.h"
+#include "Camera.h"
 #include <QFile>
 #include <QTextStream>
 #include <QCoreApplication>
 #include "Debug.h"
-#include <opencv2/opencv.hpp>
-#include <opencv2/imgproc.hpp>
+#include <algorithm>
 
 // 显示尺寸常量
 const int DISPLAY_W = 640;
@@ -17,36 +16,46 @@ const int DISPLAY_H = 480;
 * 1. 实现相机的打开、关闭、开始/停止抓取
 * 2. 管理相机参数（亮度、增益、对比度、快门、RGB通道）
 * 3. 从配置文件读取和保存相机参数
-* 4. 使用OpenCV实现实际相机图像捕获
+* 4. 使用Basler Pylon SDK实现实际相机图像捕获
 * 5. 提供图像数据转换功能
-* 6.打开的是电脑的摄像头
+* 6. 打开的是USB连接的Basler相机
 */
 
-Camera* Camera::_pCamera = nullptr;
+Camera* Camera::_pCamera = new Camera();
+Camera::GarbageCollector Camera::gc;
 
 Camera::Camera()
-    : m_nRed(8000)
-    , m_nGreen(8000)
-    , m_nBlue(8000)
-    , m_nGain(10000)
-    , m_nShutter(10000)
-    , m_nBlackLevel(5000)
-    , m_nGamma(2000)
-    , m_isOpen(false)
-    , m_isGrabbing(false)
-    , m_isDeviceRemoved(false)
-    , m_capture(nullptr)
+    : m_nRed(1219)
+    , m_nGreen(1000)
+    , m_nBlue(1984)
+    , m_nGain(5744)
+    , m_nShutter(8000)
+    , m_nBlackLevel(0)
+    , m_nGamma(1000)
 {
-    // 初始化时读取配置文件
+    SetRGain(1.0);
+    SetBGain(1.0);
+    for (int i = 0; i < 256; i++)
+    {
+        m_pLutG[i] = i;
+    }
+
     ReadConfig();
+    Open();
 }
 
 Camera::~Camera()
 {
-    if (m_capture)
+    WriteConfig();
+    Close();
+}
+
+Camera::GarbageCollector::~GarbageCollector()
+{
+    if (nullptr != Camera::_pCamera)
     {
-        delete m_capture;
-        m_capture = nullptr;
+        delete Camera::_pCamera;
+        Camera::_pCamera = nullptr;
     }
 }
 
@@ -56,11 +65,19 @@ Camera::~Camera()
 */
 Camera* Camera::GetInstance()
 {
-    if (_pCamera == nullptr)
+    if (nullptr == _pCamera)
     {
         _pCamera = new Camera();
     }
     return _pCamera;
+}
+
+/**
+* @brief 相机设备移除回调
+*/
+void Camera::OnCameraDeviceRemoved(CInstantCamera & camera)
+{
+    Debug::get()->print(L"摄像头已拔出");
 }
 
 /**
@@ -134,11 +151,14 @@ unsigned int Camera::GetBlue()const
 bool Camera::SetBlackLevel(unsigned int value)
 {
     m_nBlackLevel = value;
-    if (m_isOpen && m_capture)
+    if (IsOpen())
     {
-        // OpenCV不支持黑电平设置，使用亮度作为替代
-        double brightness = value / 1000.0; // 将0-10000范围映射到0-10
-        m_capture->set(cv::CAP_PROP_BRIGHTNESS, brightness);
+        try {
+            m_camera.BlackLevel = m_nBlackLevel / 1000.0;
+        }
+        catch (...) {
+            return false;
+        }
     }
     return true;
 }
@@ -151,11 +171,14 @@ bool Camera::SetBlackLevel(unsigned int value)
 bool Camera::SetGain(unsigned int value)
 {
     m_nGain = value;
-    if (m_isOpen && m_capture)
+    if (IsOpen())
     {
-        // OpenCV增益范围通常是0-1或0-255，将0-10000映射到0-1
-        double gain = value / 10000.0;
-        m_capture->set(cv::CAP_PROP_GAIN, gain);
+        try {
+            m_camera.Gain = m_nGain / 1000.0;
+        }
+        catch (...) {
+            return false;
+        }
     }
     return true;
 }
@@ -168,8 +191,15 @@ bool Camera::SetGain(unsigned int value)
 bool Camera::SetGamma(unsigned int value)
 {
     m_nGamma = value;
-    // OpenCV的VideoCapture不支持伽马设置，暂不实现
-    // 如果需要，可以通过后处理实现
+    if (IsOpen())
+    {
+        try {
+            m_camera.Gamma = m_nGamma / 1000.0;
+        }
+        catch (...) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -181,11 +211,14 @@ bool Camera::SetGamma(unsigned int value)
 bool Camera::SetShutter(unsigned int value)
 {
     m_nShutter = value;
-    if (m_isOpen && m_capture)
+    if (IsOpen())
     {
-        // OpenCV曝光时间转换为毫秒（Basler的value通常是微秒）
-        double exposure = value / 1000.0;
-        m_capture->set(cv::CAP_PROP_EXPOSURE, exposure);
+        try {
+            m_camera.ExposureTime = m_nShutter;
+        }
+        catch (...) {
+            return false;
+        }
     }
     return true;
 }
@@ -198,8 +231,16 @@ bool Camera::SetShutter(unsigned int value)
 bool Camera::SetRed(unsigned int value)
 {
     m_nRed = value;
-    // OpenCV的VideoCapture不支持白平衡个别通道设置
-    // 只能在后处理中进行颜色校正
+    if (IsOpen())
+    {
+        try {
+            m_camera.BalanceRatioSelector = BalanceRatioSelector_Red;
+            m_camera.BalanceRatio = m_nRed / 1000.0;
+        }
+        catch (...) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -211,7 +252,16 @@ bool Camera::SetRed(unsigned int value)
 bool Camera::SetGreen(unsigned int value)
 {
     m_nGreen = value;
-    // OpenCV的VideoCapture不支持白平衡个别通道设置
+    if (IsOpen())
+    {
+        try {
+            m_camera.BalanceRatioSelector = BalanceRatioSelector_Green;
+            m_camera.BalanceRatio = m_nGreen / 1000.0;
+        }
+        catch (...) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -223,7 +273,16 @@ bool Camera::SetGreen(unsigned int value)
 bool Camera::SetBlue(unsigned int value)
 {
     m_nBlue = value;
-    // OpenCV的VideoCapture不支持白平衡个别通道设置
+    if (IsOpen())
+    {
+        try {
+            m_camera.BalanceRatioSelector = BalanceRatioSelector_Blue;
+            m_camera.BalanceRatio = m_nBlue / 1000.0;
+        }
+        catch (...) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -233,7 +292,7 @@ bool Camera::SetBlue(unsigned int value)
 */
 bool Camera::IsOpen()const
 {
-    return m_isOpen;
+    return m_camera.IsOpen();
 }
 
 /**
@@ -242,7 +301,7 @@ bool Camera::IsOpen()const
 */
 bool Camera::IsGrabbing()const
 {
-    return m_isGrabbing;
+    return m_camera.IsGrabbing();
 }
 
 /**
@@ -310,31 +369,50 @@ void Camera::WriteConfig()
 */
 bool Camera::Open()
 {
-    // 尝试打开默认相机
-    if (!m_capture)
+    if (IsOpen())
+        Close();
+    try
     {
-        m_capture = new cv::VideoCapture(0);
-        if (m_capture->isOpened())
-        {
-            m_isOpen = true;
+        ITransportLayer *pTl = CTlFactory::GetInstance().CreateTl(BaslerUsbDeviceClass);
 
-            // 应用保存的相机参数
-            SetBlackLevel(m_nBlackLevel);
-            SetGain(m_nGain);
-            SetShutter(m_nShutter);
+        m_camera.Attach(pTl->CreateFirstDevice(), Cleanup_Delete);
+        CTlFactory::GetInstance().ReleaseTl(pTl);
+        m_camera.RegisterConfiguration(this, RegistrationMode_ReplaceAll, Cleanup_None);
+        m_camera.Open();
+        m_camera.MaxNumQueuedBuffer = 10;
+        m_camera.MaxNumBuffer = 20;
+        m_camera.OutputQueueSize = 10;
 
-            Debug::get()->print(L"摄像头已打开...");
-            return true;
-        }
-        else
-        {
-            delete m_capture;
-            m_capture = nullptr;
-            Debug::get()->print(L"摄像头打开失败...");
-            return false;
-        }
+        m_camera.Width = DISPLAY_W;
+        m_camera.Height = DISPLAY_H;
+        m_camera.OffsetX = 0;
+        m_camera.OffsetY = 0;
+
+        m_camera.TriggerSelector = TriggerSelector_FrameStart;
+        m_camera.TriggerMode = TriggerMode_Off;
+        m_camera.TriggerSelector = TriggerSelector_FrameBurstStart;
+        m_camera.TriggerMode = TriggerMode_Off;
+        m_camera.AcquisitionMode = AcquisitionMode_Continuous;
+        m_camera.ExposureMode = ExposureMode_Timed;
+        m_camera.ExposureAuto = ExposureAuto_Off;
+
+        SetBlackLevel(m_nBlackLevel);
+        SetGain(m_nGain);
+        SetShutter(m_nShutter);
+        SetGamma(m_nGamma);
+        SetRed(m_nRed);
+        SetGreen(m_nGreen);
+        SetBlue(m_nBlue);
+
+        Debug::get()->print(L"摄像头已打开...");
+        return true;
     }
-    return m_isOpen;
+    catch (...)
+    {
+        Debug::get()->print(L"摄像头打开失败...");
+        Close();
+        return false;
+    }
 }
 
 /**
@@ -343,12 +421,21 @@ bool Camera::Open()
 */
 bool Camera::StartGrabbing()
 {
-    if (m_isOpen && m_capture)
+    if (!IsOpen())
     {
-        m_isGrabbing = true;
+        if (!Open())
+            return false;
+    }
+
+    try
+    {
+        m_camera.StartGrabbing(GrabStrategy_LatestImages);
         return true;
     }
-    return false;
+    catch (...)
+    {
+        return false;
+    }
 }
 
 /**
@@ -356,7 +443,7 @@ bool Camera::StartGrabbing()
 */
 void Camera::StopGrabbing()
 {
-    m_isGrabbing = false;
+    m_camera.StopGrabbing();
 }
 
 /**
@@ -364,13 +451,10 @@ void Camera::StopGrabbing()
 */
 void Camera::Close()
 {
-    m_isGrabbing = false;
-    m_isOpen = false;
-    if (m_capture)
-    {
-        delete m_capture;
-        m_capture = nullptr;
-    }
+    if (IsGrabbing())
+        m_camera.StopGrabbing();
+    m_camera.DestroyDevice();
+    m_camera.Close();
     Debug::get()->print(L"摄像头已关闭...");
 }
 
@@ -381,37 +465,26 @@ void Camera::Close()
 */
 bool Camera::RetrieveResult(void* ptrResult)
 {
-    if (!m_isOpen || !m_capture || !m_isGrabbing)
+    if (!IsOpen() || !IsGrabbing())
         return false;
-
-    cv::Mat frame;
-    if (m_capture->read(frame))
+    try
     {
-        // 调整图像大小以匹配目标缓冲区（DISPLAY_W x DISPLAY_H）
-        cv::Mat resizedFrame;
-        if (frame.cols != DISPLAY_W || frame.rows != DISPLAY_H)
+        CGrabResultPtr ptrGrabResult;
+        if (m_camera.RetrieveResult(300, ptrGrabResult, TimeoutHandling_Return))
         {
-            cv::resize(frame, resizedFrame, cv::Size(DISPLAY_W, DISPLAY_H));
+            if (ptrGrabResult->GrabSucceeded())
+            {
+                ConvertBitmap((unsigned char*)ptrResult, (unsigned char*)ptrGrabResult->GetBuffer(), DISPLAY_W, DISPLAY_H);
+                return true;
+            }
         }
-        else
-        {
-            resizedFrame = frame;
-        }
-
-        // 将OpenCV的BGR转换为RGB格式（交换B和R通道）
-        cv::Mat rgbFrame = resizedFrame.clone();
-        cv::cvtColor(resizedFrame, rgbFrame, cv::COLOR_BGR2RGB);
-
-        // 确保目标缓冲区有足够的空间
-        int width = rgbFrame.cols;
-        int height = rgbFrame.rows;
-        int size = width * height * 3;
-
-        // 复制数据到目标缓冲区
-        memcpy(ptrResult, rgbFrame.data, size);
-        return true;
+        return false;
     }
-    return false;
+    catch (...)
+    {
+        StopGrabbing();
+        return false;
+    }
 }
 
 /**
@@ -421,37 +494,29 @@ bool Camera::RetrieveResult(void* ptrResult)
 */
 bool Camera::GrabOne(void* ptrResult)
 {
-    if (!m_isOpen || !m_capture)
-        return false;
-
-    cv::Mat frame;
-    if (m_capture->read(frame))
+    if (!IsOpen())
     {
-        // 调整图像大小以匹配目标缓冲区（DISPLAY_W x DISPLAY_H）
-        cv::Mat resizedFrame;
-        if (frame.cols != DISPLAY_W || frame.rows != DISPLAY_H)
-        {
-            cv::resize(frame, resizedFrame, cv::Size(DISPLAY_W, DISPLAY_H));
-        }
-        else
-        {
-            resizedFrame = frame;
-        }
-
-        // 将OpenCV的BGR转换为RGB格式
-        cv::Mat rgbFrame;
-        cv::cvtColor(resizedFrame, rgbFrame, cv::COLOR_BGR2RGB);
-
-        // 确保目标缓冲区有足够的空间
-        int width = rgbFrame.cols;
-        int height = rgbFrame.rows;
-        int size = width * height * 3;
-
-        // 复制数据到目标缓冲区
-        memcpy(ptrResult, rgbFrame.data, size);
-        return true;
+        if (!Open())
+            return false;
     }
-    return false;
+
+    try
+    {
+        CGrabResultPtr ptrGrabResult;
+        if (m_camera.GrabOne(300, ptrGrabResult, TimeoutHandling_Return))
+        {
+            if (ptrGrabResult->GrabSucceeded())
+            {
+                ConvertBitmap((unsigned char*)ptrResult, (unsigned char*)ptrGrabResult->GetBuffer(), DISPLAY_W, DISPLAY_H);
+                return true;
+            }
+        }
+        return false;
+    }
+    catch (...)
+    {
+        return false;
+    }
 }
 
 /**
@@ -460,13 +525,211 @@ bool Camera::GrabOne(void* ptrResult)
 */
 bool Camera::IsCameraDeviceRemoved()
 {
-    if (!m_isOpen || !m_capture)
+    return m_camera.IsCameraDeviceRemoved();
+}
+
+/**
+* @brief 设置蓝色通道增益
+* @param gain - 增益值
+*/
+void Camera::SetBGain(double gain)
+{
+    for (int i = 0; i < 256; i++)
     {
-        m_isDeviceRemoved = true;
-        Debug::get()->print(L"摄像头已拔出");
-        return true;
+        m_pLutB[i] = (BYTE)std::min(255, (int)(i * gain));
     }
-    return false;
+}
+
+/**
+* @brief 设置红色通道增益
+* @param gain - 增益值
+*/
+void Camera::SetRGain(double gain)
+{
+    for (int i = 0; i < 256; i++)
+    {
+        m_pLutR[i] = (BYTE)std::min(255, (int)(i * gain));
+    }
+}
+
+/**
+* @brief 处理GB行
+* @param pDest - 目标缓冲区
+* @param pSource - 源缓冲区
+* @param width - 图像宽度
+* @param height - 图像高度
+* @param lineoffset - 行偏移
+*/
+void Camera::ProcessGBLines(unsigned char* pDest, const unsigned char* pSource, int width, int height, unsigned int lineoffset)
+{
+    const unsigned char* pLastLine = pSource + width * (height - 1);
+    const unsigned char* pRaw = pSource + lineoffset * width;
+    unsigned char* pRGB = pDest + width * (height - lineoffset - 1) * 3;
+    const unsigned char* pEnd;
+    while (pRaw < pLastLine)
+    {
+        pEnd = pRaw + width - 2;  // 跳过最后一列
+        while (pRaw < pEnd)
+        {
+            // GREENPIXEL_B
+            pRGB[2] = m_pLutB[*(pRaw + 1)];
+            pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
+            pRGB[0] = m_pLutR[*(pRaw + width)];
+            pRGB += 3;
+            pRaw++;
+            
+            // BLUEPIXEL
+            pRGB[2] = m_pLutB[*pRaw];
+            pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
+            pRGB[0] = m_pLutR[*(pRaw + width + 1)];
+            pRGB += 3;
+            pRaw++;
+        }
+        // 处理最后一个像素
+        pRGB[2] = m_pLutB[*(pRaw + 1)];
+        pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
+        pRGB[0] = m_pLutR[*(pRaw + width)];
+        pRGB += 3;
+        pRaw++;
+        
+        pRaw += width + 1;
+        pRGB -= (3 * width - 1);
+    }
+}
+
+/**
+* @brief 处理RG行
+* @param pDest - 目标缓冲区
+* @param pSource - 源缓冲区
+* @param width - 图像宽度
+* @param height - 图像高度
+* @param lineoffset - 行偏移
+*/
+void Camera::ProcessRGLines(unsigned char* pDest, const unsigned char* pSource, int width, int height, unsigned int lineoffset)
+{
+    const unsigned char* pLastLine = pSource + width * (height - 1);
+    const unsigned char* pRaw = pSource + lineoffset * width;
+    unsigned char* pRGB = pDest + width * (height - lineoffset - 1) * 3;
+    const unsigned char* pEnd;
+    while (pRaw < pLastLine)
+    {
+        pEnd = pRaw + width - 2;  // 跳过最后一列
+        while (pRaw < pEnd)
+        {
+            // REDPIXEL
+            pRGB[2] = m_pLutB[*(pRaw + width + 1)];
+            pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
+            pRGB[0] = m_pLutR[*pRaw];
+            pRGB += 3;
+            pRaw++;
+            
+            // GREENPIXEL_R
+            pRGB[2] = m_pLutB[*(pRaw + width)];
+            pRGB[1] = m_pLutG[*pRaw];
+            pRGB[0] = m_pLutR[*(pRaw + 1)];
+            pRGB += 3;
+            pRaw++;
+        }
+        // 处理最后一个像素
+        pRGB[2] = m_pLutB[*(pRaw + width + 1)];
+        pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
+        pRGB[0] = m_pLutR[*pRaw];
+        pRGB += 3;
+        pRaw++;
+        
+        pRaw += width + 1;
+        pRGB -= (3 * width - 1);
+    }
+}
+
+/**
+* @brief 处理BG行
+* @param pDest - 目标缓冲区
+* @param pSource - 源缓冲区
+* @param width - 图像宽度
+* @param height - 图像高度
+* @param lineoffset - 行偏移
+*/
+void Camera::ProcessBGLines(unsigned char* pDest, const unsigned char* pSource, int width, int height, unsigned int lineoffset)
+{
+    const unsigned char* pLastLine = pSource + width * (height - 1);
+    const unsigned char* pRaw = pSource + lineoffset * width;
+    unsigned char* pRGB = pDest + width * (height - lineoffset - 1) * 3;
+    const unsigned char* pEnd;
+    while (pRaw < pLastLine)
+    {
+        pEnd = pRaw + width - 2;  // 跳过最后一列
+        while (pRaw < pEnd)
+        {
+            // BLUEPIXEL
+            pRGB[2] = m_pLutB[*pRaw];
+            pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
+            pRGB[0] = m_pLutR[*(pRaw + width + 1)];
+            pRGB += 3;
+            pRaw++;
+            
+            // GREENPIXEL_B
+            pRGB[2] = m_pLutB[*(pRaw + 1)];
+            pRGB[1] = m_pLutG[*pRaw];
+            pRGB[0] = m_pLutR[*(pRaw + width)];
+            pRGB += 3;
+            pRaw++;
+        }
+        // 处理最后一个像素
+        pRGB[2] = m_pLutB[*pRaw];
+        pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
+        pRGB[0] = m_pLutR[*(pRaw + width + 1)];
+        pRGB += 3;
+        pRaw++;
+        
+        pRaw += width + 1;
+        pRGB -= (3 * width - 1);
+    }
+}
+
+/**
+* @brief 处理GR行
+* @param pDest - 目标缓冲区
+* @param pSource - 源缓冲区
+* @param width - 图像宽度
+* @param height - 图像高度
+* @param lineoffset - 行偏移
+*/
+void Camera::ProcessGRLines(unsigned char* pDest, const unsigned char* pSource, int width, int height, unsigned int lineoffset)
+{
+    const unsigned char* pLastLine = pSource + width * (height - 1);
+    const unsigned char* pRaw = pSource + lineoffset * width;
+    unsigned char* pRGB = pDest + width * (height - lineoffset - 1) * 3;
+    const unsigned char* pEnd;
+    while (pRaw < pLastLine)
+    {
+        pEnd = pRaw + width - 2;  // 跳过最后一列
+        while (pRaw < pEnd)
+        {
+            // GREENPIXEL_R
+            pRGB[2] = m_pLutB[*(pRaw + width)];
+            pRGB[1] = m_pLutG[*pRaw];
+            pRGB[0] = m_pLutR[*(pRaw + 1)];
+            pRGB += 3;
+            pRaw++;
+            
+            // REDPIXEL
+            pRGB[2] = m_pLutB[*(pRaw + width + 1)];
+            pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
+            pRGB[0] = m_pLutR[*pRaw];
+            pRGB += 3;
+            pRaw++;
+        }
+        // 处理最后一个像素
+        pRGB[2] = m_pLutB[*(pRaw + width)];
+        pRGB[1] = m_pLutG[*pRaw];
+        pRGB[0] = m_pLutR[*(pRaw + 1)];
+        pRGB += 3;
+        pRaw++;
+        
+        pRaw += width + 1;
+        pRGB -= (3 * width - 1);
+    }
 }
 
 /**
@@ -478,9 +741,50 @@ bool Camera::IsCameraDeviceRemoved()
 */
 void Camera::ConvertBitmap(unsigned char* pDest, unsigned char* pSource, int width, int height)
 {
-    // OpenCV的VideoCapture已经返回解码后的BGR图像
-    // 这里直接复制数据即可
-    // 如果需要Bayer转换，应该在GrabOne/RetrieveResult中进行
-    int size = width * height * 3;
-    memcpy(pDest, pSource, size);
+    enum PatternOrigin_t
+    {
+        poGB = 1,
+        poGR,
+        poB,
+        poR
+    };
+    
+    PatternOrigin_t PatternOrigin = poB; // BGGR格式
+
+    switch (PatternOrigin)
+    {
+    case poGB: // GBGR
+        ProcessGBLines(pDest, pSource, width, height, 0);
+        ProcessRGLines(pDest, pSource, width, height, 1);
+        break;
+    case poGR: // GRBG
+        ProcessGRLines(pDest, pSource, width, height, 0);
+        ProcessBGLines(pDest, pSource, width, height, 1);
+        break;
+    case poB: // BGGR
+        ProcessBGLines(pDest, pSource, width, height, 0);
+        ProcessGRLines(pDest, pSource, width, height, 1);
+        break;
+    case poR: // RGGB
+        ProcessRGLines(pDest, pSource, width, height, 0);
+        ProcessGBLines(pDest, pSource, width, height, 1);
+        break;
+    }
+
+    // 处理边界：擦除目标图像的最右列和最后一行
+    unsigned char* pRGB = pDest;
+    // 设置最右列为零
+    for (int i = 0; i < height; i++)
+    {
+        pRGB[(i + 1) * width * 3 - 3] = 0;
+        pRGB[(i + 1) * width * 3 - 2] = 0;
+        pRGB[(i + 1) * width * 3 - 1] = 0;
+    }
+    // 设置最后一行为零
+    for (int i = 0; i < width; i++)
+    {
+        pRGB[i * 3] = 0;
+        pRGB[i * 3 + 1] = 0;
+        pRGB[i * 3 + 2] = 0;
+    }
 }

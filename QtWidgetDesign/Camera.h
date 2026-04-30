@@ -1,7 +1,11 @@
 #pragma once
 
 #include <QString>
-#include <opencv2/opencv.hpp>
+#include <pylon/PylonIncludes.h>
+#include <pylon/usb/BaslerUsbInstantCamera.h>
+
+using namespace Pylon;
+using namespace Basler_UsbCameraParams;
 
 /*
 * Camera.h - 相机操作和参数管理类头文件
@@ -12,9 +16,10 @@
 * 3. 管理相机参数（亮度、增益、对比度、快门、RGB通道）
 * 4. 提供从配置文件读取和保存相机参数的方法
 * 5. 支持实际相机图像捕获和数据转换
+* 6. 使用Basler Pylon SDK打开USB摄像头
 */
 
-class Camera
+class Camera : private Pylon::CConfigurationEventHandler
 {
 private:
     Camera();
@@ -44,14 +49,26 @@ public:
     bool StartGrabbing();
     void StopGrabbing();
     void Close();
-    // 添加MFC版本中存在的方法
+    // MFC版本中存在的方法
     bool RetrieveResult(void* ptrResult);
     bool GrabOne(void* ptrResult);
     bool IsCameraDeviceRemoved();
     void ConvertBitmap(unsigned char* pDest, unsigned char* pSource, int width, int height);
 
 private:
+    void OnCameraDeviceRemoved(CInstantCamera & camera)override;
+    
+    // 垃圾回收器，确保单例模式的正确释放
+    class GarbageCollector {
+    public:
+        ~GarbageCollector();
+    };
+    static GarbageCollector gc;
+
+private:
     static Camera* _pCamera;
+    CBaslerUsbInstantCamera m_camera;
+    PylonAutoInitTerm autoInitTerm;
 
     unsigned int m_nRed;
     unsigned int m_nGreen;
@@ -61,9 +78,16 @@ private:
     unsigned int m_nBlackLevel;
     unsigned int m_nGamma;
     
-    bool m_isOpen;
-    bool m_isGrabbing;
-    bool m_isDeviceRemoved;
+    BYTE m_pLutG[256];
+    BYTE m_pLutR[256];
+    BYTE m_pLutB[256];
     
-    cv::VideoCapture* m_capture;
+    void SetBGain(double gain);
+    void SetRGain(double gain);
+    
+    // 图像处理方法
+    void ProcessGBLines(unsigned char* pDest, const unsigned char* pSource, int width, int height, unsigned int lineoffset);
+    void ProcessRGLines(unsigned char* pDest, const unsigned char* pSource, int width, int height, unsigned int lineoffset);
+    void ProcessBGLines(unsigned char* pDest, const unsigned char* pSource, int width, int height, unsigned int lineoffset);
+    void ProcessGRLines(unsigned char* pDest, const unsigned char* pSource, int width, int height, unsigned int lineoffset);
 };

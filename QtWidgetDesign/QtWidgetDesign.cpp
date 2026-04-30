@@ -81,10 +81,14 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     myTabWidget->addTab(colorDlg, "Color");       // 采色
     
     MatchDlg_5vs5* matchDlg = new MatchDlg_5vs5(myTabWidget);
+    matchDlg->setDisplayDlg(displayDlg);  // 设置DisplayDlg指针
     myTabWidget->addTab(matchDlg, "competition"); // 比赛
     
     // 连接标签页切换信号
     connect(myTabWidget, &QTabWidget::currentChanged, [=](int index) {
+        // 先停止所有定时器，避免冲突
+        displayDlg->Stop();
+        
         switch (index) {
         case 0: // Camera标签页
             displayDlg->ShowDynamic();
@@ -103,6 +107,10 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
             displayDlg->ShowInitGame();
             break;
         }
+        // 强制立即更新显示区域，减少切换延迟
+        displayDlg->update();
+        // 处理所有待处理事件，确保界面响应
+        QCoreApplication::processEvents();
     });
     
     // 将标签页添加到主布局

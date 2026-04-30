@@ -14,7 +14,11 @@ SOURCES += \
     ColorDlg.cpp \
     MatchDlg_5vs5.cpp \
     Camera.cpp \
-    Debug.cpp
+    Debug.cpp \
+    Strategy.cpp \
+    Strategy_5vs5_1.cpp \
+    Strategy_5vs5_2.cpp \
+    Strategy_sjxbs.cpp
 
 HEADERS += \
     QtWidgetDesign.h \
@@ -25,7 +29,11 @@ HEADERS += \
     MatchDlg_5vs5.h \
     Camera.h \
     Debug.h \
-    USB340HID61_DEF.h
+    USB340HID61_DEF.h \
+    Strategy.h \
+    Strategy_5vs5_1.h \
+    Strategy_5vs5_2.h \
+    Strategy_sjxbs.h
 
 CONFIG += c++11
 
