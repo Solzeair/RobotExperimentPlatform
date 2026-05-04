@@ -349,6 +349,8 @@ void MatchDlg_5vs5::initUI()
     comboStrategy = new QComboBox(this);
     comboStrategy->addItem("1号策略");
     comboStrategy->addItem("2号策略");
+    comboStrategy->addItem("3号策略");
+    comboStrategy->addItem("4号策略");
     comboStrategy->setFont(font);
     strategyLayout->addWidget(strategyLabel);
     strategyLayout->addWidget(comboStrategy);
