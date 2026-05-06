@@ -2,11 +2,12 @@
 * 5v5比赛对话框源文件
 * 写作人 李青
 * 功能 5v5比赛控制界面逻辑实现，包含开球类型、阵型布置、点球及战术选择功能响应。
-* 策略通过动态链接库(DLL)形式实现，本文件只声明接口和传递参数
+* 策略通过插件形式实现，与标定采色接口保持一致
 */
 #include "MatchDlg_5vs5.h"
 #include "DisplayDlg.h"
 #include "Debug.h"
+#include "PluginManager.h"
 #include <QMessageBox>
 #include <QDebug>
 
@@ -27,23 +28,7 @@ MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
     , m_dan(0)
     , StrategyNum(0)
     , m_pDisplayDlg(nullptr)
-    , m_library(nullptr)
-    , m_strategy(nullptr)
-    , m_createStrategy(nullptr)
-    , m_destroyStrategy(nullptr)
-    , m_setParameter(nullptr)
-    , m_getParameter(nullptr)
-    , m_initializeStrategy(nullptr)
-    , m_setOurGoalOnRight(nullptr)
-    , m_setOurKickoff(nullptr)
-    , m_setMatchState(nullptr)
-    , m_setFormationType(nullptr)
-    , m_setKickoffType(nullptr)
-    , m_setPenaltyKickMode(nullptr)
-    , m_selectStrategy(nullptr)
-    , m_parkRobotsFunc(nullptr)
-    , m_saveConfigFunc(nullptr)
-    , m_loadConfigFunc(nullptr)
+    , m_strategyPlugin(nullptr)
     , m_isMatchRunning(false)
     , radioMiddleDirect(nullptr)
     , radioCenterGoalkeeper(nullptr)
@@ -60,7 +45,11 @@ MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     initUI();
-    loadStrategyDLL("RobotStrategyDll.dll");
+    // 通过插件管理器从指定路径加载策略插件
+    PluginManager* pluginManager = PluginManager::getInstance();
+    QString dllPath = QString("e:/bishe/策略/RobotStrategyDll.dll");
+    pluginManager->loadPlugin(dllPath, PluginType::STRATEGY);
+    m_strategyPlugin = dynamic_cast<StrategyPluginInterface*>(pluginManager->getPlugin(PluginType::STRATEGY));
     
     // 初始状态：禁用开始比赛按钮
     btnStartMatch->setEnabled(false);
@@ -68,119 +57,41 @@ MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
 
 MatchDlg_5vs5::~MatchDlg_5vs5()
 {
-    unloadStrategyDLL();
+    // 策略插件由插件管理器管理，不需要在此释放
 }
 
 void MatchDlg_5vs5::setDisplayDlg(DisplayDlg* displayDlg)
 {
     m_pDisplayDlg = displayDlg;
-}
-
-bool MatchDlg_5vs5::loadStrategyDLL(const QString& dllPath)
-{
-    unloadStrategyDLL();
-
-    m_library = new QLibrary(dllPath, this);
-
-    if (!m_library->load()) {
-        qDebug() << "Failed to load DLL:" << m_library->errorString();
-        return false;
-    }
-
-    // 解析DLL函数指针
-    m_createStrategy = (CreateStrategyFunc)m_library->resolve("CreateStrategy");
-    m_destroyStrategy = (DestroyStrategyFunc)m_library->resolve("DestroyStrategy");
-    m_setParameter = (SetParameterFunc)m_library->resolve("setParameter");
-    m_getParameter = (GetParameterFunc)m_library->resolve("getParameter");
-    m_initializeStrategy = (InitializeStrategyFunc)m_library->resolve("InitializeStrategy");
-    m_setOurGoalOnRight = (SetOurGoalOnRightFunc)m_library->resolve("setOurGoalOnRight");
-    m_setOurKickoff = (SetOurKickoffFunc)m_library->resolve("setOurKickoff");
-    m_setMatchState = (SetMatchStateFunc)m_library->resolve("SetMatchState");
-    m_setFormationType = (SetFormationTypeFunc)m_library->resolve("SetFormationType");
-    m_setKickoffType = (SetKickoffTypeFunc)m_library->resolve("SetKickoffType");
-    m_setPenaltyKickMode = (SetPenaltyKickModeFunc)m_library->resolve("SetPenaltyKickMode");
-    m_selectStrategy = (SelectStrategyFunc)m_library->resolve("SelectStrategy");
-    m_parkRobotsFunc = (ParkRobotsFunc)m_library->resolve("ParkRobots");
-    m_saveConfigFunc = (SaveConfigFunc)m_library->resolve("saveConfig");
-    m_loadConfigFunc = (LoadConfigFunc)m_library->resolve("loadConfig");
-
-    if (!m_createStrategy || !m_destroyStrategy) {
-        qDebug() << "Failed to resolve required functions!";
-        return false;
-    }
-
-    // 创建策略实例
-    m_strategy = m_createStrategy(0);
-    if (!m_strategy) {
-        qDebug() << "Failed to create strategy!";
-        return false;
-    }
-
-    // 设置默认参数
-    if (m_setParameter) {
-        m_setParameter(m_strategy, "max_speed", 75.0);
-        m_setParameter(m_strategy, "kp_pos", 12.0);
-        m_setParameter(m_strategy, "kp_angle", 22.0);
-    }
-
-    qDebug() << "DLL loaded successfully!";
-    return true;
-}
-
-void MatchDlg_5vs5::unloadStrategyDLL()
-{
-    if (m_destroyStrategy && m_strategy) {
-        m_destroyStrategy(m_strategy);
-        m_strategy = nullptr;
-    }
-
-    if (m_library) {
-        m_library->unload();
-        delete m_library;
-        m_library = nullptr;
+    // 设置DisplayDlg指针给策略插件
+    if (m_strategyPlugin) {
+        m_strategyPlugin->setDisplayDlg(displayDlg);
     }
 }
 
 void MatchDlg_5vs5::applyMatchParameters()
 {
-    if (!m_strategy) {
+    if (!m_strategyPlugin) {
         return;
     }
 
     // 阵型 (0=单后卫, 1=双后卫)
-    if (m_setFormationType) {
-        m_setFormationType(m_strategy, m_dan);
-    }
+    m_strategyPlugin->setFormationType(m_dan);
 
     // 球门方向 (左半场=0, 右半场=1)
-    if (m_setOurGoalOnRight) {
-        m_setOurGoalOnRight(m_strategy, (m_area == 1));
-    }
+    m_strategyPlugin->setOurGoalOnRight(m_area == 1);
 
     // 开球方 (我方=1, 对方=0)
-    if (m_setOurKickoff) {
-        m_setOurKickoff(m_strategy, (m_attack == 1));
-    }
-
-    // 开球方式 (0=普通, 1=点球, 其他值根据MFC版本扩展)
-    if (m_setKickoffType) {
-        m_setKickoffType(m_strategy, m_kick);
-    }
+    m_strategyPlugin->setOurKickoff(m_attack == 1);
 
     // 点球模式 (m_dqdirect=点球方向, m_dqsmd=点球模式)
-    if (m_setPenaltyKickMode) {
-        m_setPenaltyKickMode(m_strategy, m_dqdirect, m_dqsmd);
-    }
+    m_strategyPlugin->setPenaltyKickMode(m_dqdirect, m_dqsmd);
 
     // 策略选择
-    if (m_selectStrategy) {
-        m_selectStrategy(m_strategy, StrategyNum);
-    }
+    m_strategyPlugin->selectStrategy(StrategyNum);
 
     // 设置归位参数
-    if (m_setParameter) {
-        m_setParameter(m_strategy, "return2pt", m_return2pt ? 1.0 : 0.0);
-    }
+    m_strategyPlugin->setParameter("return2pt", m_return2pt ? 1.0 : 0.0);
 }
 
 void MatchDlg_5vs5::initUI()
@@ -438,9 +349,9 @@ void MatchDlg_5vs5::initUI()
 
 void MatchDlg_5vs5::onButtonStart()
 {
-    if (!m_strategy) {
-        QMessageBox::warning(this, "错误", "策略DLL未加载");
-        Debug::get()->print("错误：策略DLL未加载");
+    if (!m_strategyPlugin) {
+        QMessageBox::warning(this, "错误", "策略插件未加载");
+        Debug::get()->print("错误：策略插件未加载");
         return;
     }
 
@@ -457,14 +368,10 @@ void MatchDlg_5vs5::onButtonStart()
     else
         m_dqdirect = 1;
 
-    // 初始化比赛场景
-    if (m_initializeStrategy) {
-        int isFirstHalf = (m_area == 0) ? 1 : 0;
-        int isOurKickoff = (m_attack == 1) ? 1 : 0;
-        m_initializeStrategy(m_strategy, 0, 0, 300, isFirstHalf, isOurKickoff);
-    }
+    // 初始化策略
+    m_strategyPlugin->initialize(0);
 
-    // 应用比赛参数到DLL
+    // 应用比赛参数到插件
     applyMatchParameters();
 
     m_isMatchRunning = true;
@@ -498,8 +405,8 @@ void MatchDlg_5vs5::onStrategyChanged(int index)
 {
     StrategyNum = index;
 
-    if (m_selectStrategy && m_strategy) {
-        m_selectStrategy(m_strategy, index);
+    if (m_strategyPlugin) {
+        m_strategyPlugin->selectStrategy(index);
     }
 
     qDebug() << "Strategy changed to:" << index;
@@ -508,9 +415,9 @@ void MatchDlg_5vs5::onStrategyChanged(int index)
 
 void MatchDlg_5vs5::onButtonPrepare()
 {
-    if (!m_strategy) {
-        QMessageBox::warning(this, "错误", "策略DLL未加载");
-        Debug::get()->print("错误：策略DLL未加载");
+    if (!m_strategyPlugin) {
+        QMessageBox::warning(this, "错误", "策略插件未加载");
+        Debug::get()->print("错误：策略插件未加载");
         return;
     }
 
@@ -534,12 +441,11 @@ void MatchDlg_5vs5::onButtonPrepare()
     else
         m_dqdirect = 1;
 
-    // 应用比赛参数到DLL
+    // 应用比赛参数到插件
     applyMatchParameters();
 
-    if (m_parkRobotsFunc) {
-        m_parkRobotsFunc(m_strategy);
-    }
+    // 机器人归位
+    m_strategyPlugin->parkRobots();
 
     if (m_pDisplayDlg) {
         m_pDisplayDlg->ShowInitGame();

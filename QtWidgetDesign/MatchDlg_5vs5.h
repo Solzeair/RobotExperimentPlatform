@@ -2,7 +2,7 @@
 * 5v5比赛对话框头文件
 * 写作人 李青
 * 功能 5v5比赛控制面板的类，包含各种比赛规则单选框、策略选择和比赛状态控制方法。
-* 策略通过动态链接库(DLL)形式实现，本文件只声明接口和传递参数
+* 策略通过插件形式实现，与标定采色接口保持一致
 */
 #pragma once
 
@@ -18,55 +18,10 @@
 #include <QVBoxLayout>
 #include <QTimer>
 #include <QElapsedTimer>
-#include <QLibrary>
 #include <QButtonGroup>
 
-// ==================== 数据结构定义（与DLL保持一致）====================
-struct Point {
-    double x, y;
-    Point(double x = 0, double y = 0) : x(x), y(y) {}
-};
-
-struct RobotPose {
-    double x, y, theta;
-    double vx, vy;
-    double vtheta;
-    RobotPose(double x = 0, double y = 0, double theta = 0,
-        double vx = 0, double vy = 0, double vtheta = 0)
-        : x(x), y(y), theta(theta), vx(vx), vy(vy), vtheta(vtheta) {
-    }
-};
-
-struct BallInfo {
-    Point pos;
-    double vel_x, vel_y;
-    double velocity;
-    double angle;
-    Point predictPos;
-    BallInfo() : vel_x(0), vel_y(0), velocity(0), angle(0) {}
-};
-
-struct WheelVelocity {
-    double left, right;
-    WheelVelocity(double l = 0, double r = 0) : left(l), right(r) {}
-};
-
-// ==================== DLL函数指针类型定义 ====================
-typedef void* (*CreateStrategyFunc)(int);
-typedef void (*DestroyStrategyFunc)(void*);
-typedef void (*SetParameterFunc)(void*, const char*, double);
-typedef double (*GetParameterFunc)(void*, const char*);
-typedef void (*InitializeStrategyFunc)(void*, int, int, int, int, int);
-typedef void (*SetOurGoalOnRightFunc)(void*, bool);
-typedef void (*SetOurKickoffFunc)(void*, bool);
-typedef void (*SetMatchStateFunc)(void*, int);
-typedef void (*SetFormationTypeFunc)(void*, int);
-typedef void (*SetPenaltyKickModeFunc)(void*, int, int);
-typedef void (*SelectStrategyFunc)(void*, int);
-typedef void (*ParkRobotsFunc)(void*);
-typedef void (*SetKickoffTypeFunc)(void*, int);
-typedef bool (*SaveConfigFunc)(void*, const char*);
-typedef bool (*LoadConfigFunc)(void*, const char*);
+// 包含策略插件接口
+#include "StrategyPluginInterface.h"
 
 // 前向声明
 class DisplayDlg;
@@ -80,10 +35,8 @@ public:
     ~MatchDlg_5vs5();
     void setDisplayDlg(DisplayDlg* displayDlg);
 
-    // ========== DLL管理接口 ==========
-    bool loadStrategyDLL(const QString& dllPath);
-    void unloadStrategyDLL();
-    void* getStrategy() const { return m_strategy; }
+    // ========== 策略插件接口 ==========
+    StrategyPluginInterface* getStrategyPlugin() const { return m_strategyPlugin; }
 
     // ========== 参数设置接口 ==========
     void applyMatchParameters();
@@ -151,26 +104,8 @@ private:
     // --- 显示对话框指针 ---
     DisplayDlg* m_pDisplayDlg;
 
-    // ========== DLL相关 ==========
-    QLibrary* m_library;
-    void* m_strategy;
-
-    // DLL函数指针
-    CreateStrategyFunc m_createStrategy;
-    DestroyStrategyFunc m_destroyStrategy;
-    SetParameterFunc m_setParameter;
-    GetParameterFunc m_getParameter;
-    InitializeStrategyFunc m_initializeStrategy;
-    SetOurGoalOnRightFunc m_setOurGoalOnRight;
-    SetOurKickoffFunc m_setOurKickoff;
-    SetMatchStateFunc m_setMatchState;
-    SetFormationTypeFunc m_setFormationType;
-    SetKickoffTypeFunc m_setKickoffType;
-    SetPenaltyKickModeFunc m_setPenaltyKickMode;
-    SelectStrategyFunc m_selectStrategy;
-    ParkRobotsFunc m_parkRobotsFunc;
-    SaveConfigFunc m_saveConfigFunc;
-    LoadConfigFunc m_loadConfigFunc;
+    // ========== 策略插件接口 ==========
+    StrategyPluginInterface* m_strategyPlugin;
 
     // 比赛状态
     bool m_isMatchRunning;

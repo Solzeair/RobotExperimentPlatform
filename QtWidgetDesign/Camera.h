@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QString>
 #include <pylon/PylonIncludes.h>
@@ -16,7 +16,7 @@ using namespace Basler_UsbCameraParams;
 * 3. 管理相机参数（亮度、增益、对比度、快门、RGB通道）
 * 4. 提供从配置文件读取和保存相机参数的方法
 * 5. 支持实际相机图像捕获和数据转换
-* 6. 使用Basler Pylon SDK打开USB摄像头
+* 6. 打开的是USB连接的Basler相机
 */
 
 class Camera : private Pylon::CConfigurationEventHandler

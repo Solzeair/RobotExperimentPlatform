@@ -2,7 +2,7 @@
 * 摄像头调整对话框文件
 * 写作人 李青
 * 功能 摄像头调整界面设计，包含亮度、增益、对比度、快门、红色、绿色、蓝色等参数的滑块和输入框，以及保存按钮。
-* 所有参数都实时生效
+* 已完成 
 */
 
 #include "CameraDlg.h"
@@ -446,8 +446,39 @@ void CameraDlg::onSliderBlueChanged(int value)
 
 void CameraDlg::onSaveCamera()
 {
-    // 保存摄像头参数到文件
+    // 先从输入框读取值并更新相机参数
+    blackLevel = editBlackLevel->text().toDouble();
+    slideBlackLevel = (int)(blackLevel * 1000);
+    
+    gain = editGain->text().toDouble();
+    slideGain = (int)(gain * 1000);
+    
+    gamma = editGamma->text().toDouble();
+    slideGamma = (int)(gamma * 1000);
+    
+    shutter = editShutter->text().toInt();
+    slideShutter = shutter;
+    
+    red = editRed->text().toDouble();
+    slideRed = (int)(red * 1000);
+    
+    green = editGreen->text().toDouble();
+    slideGreen = (int)(green * 1000);
+    
+    blue = editBlue->text().toDouble();
+    slideBlue = (int)(blue * 1000);
+    
+    // 更新相机参数
     if (_pCamera) {
+        _pCamera->SetBlackLevel(slideBlackLevel);
+        _pCamera->SetGain(slideGain);
+        _pCamera->SetGamma(slideGamma);
+        _pCamera->SetShutter(slideShutter);
+        _pCamera->SetRed(slideRed);
+        _pCamera->SetGreen(slideGreen);
+        _pCamera->SetBlue(slideBlue);
+        
+        // 保存摄像头参数到文件
         _pCamera->WriteConfig();
         QMessageBox::information(this, "保存成功", "摄像头参数已保存！");
     } else {

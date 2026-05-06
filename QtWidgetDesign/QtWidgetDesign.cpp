@@ -1,13 +1,16 @@
 #include "QtWidgetDesign.h"
 #include "CameraDlg.h"
 #include "RobotDlg.h"
-#include "DemarcateDlg.h"
-#include "ColorDlg.h"
 #include "MatchDlg_5vs5.h"
 #include "DisplayDlg.h"
 #include "Debug.h"
+#include "PluginManager.h"
+#include "PluginInterface.h"
 #include <QTextEdit>
 #include <QPushButton>
+#include <QDebug>
+#include <QVBoxLayout>
+#include <QLabel>
 
 QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     : CFrameLessWidgetBase(parent)
@@ -73,12 +76,67 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     RobotDlg* robotDlg = new RobotDlg(myTabWidget);
     myTabWidget->addTab(robotDlg, "Frequency");   // 频率
     
-    DemarcateDlg* demarcateDlg = new DemarcateDlg(myTabWidget);
-    demarcateDlg->setDisplayDlg(displayDlg);  // 设置DisplayDlg指针
-    myTabWidget->addTab(demarcateDlg, "Demarcate");   // 标定
+    // 获取插件管理器实例
+    PluginManager* pluginManager = PluginManager::getInstance();
     
-    ColorDlg* colorDlg = new ColorDlg(myTabWidget);
-    myTabWidget->addTab(colorDlg, "Color");       // 采色
+    // 创建标定标签页（界面由插件提供）
+    QWidget* demarcateWidget = new QWidget(myTabWidget);
+    myTabWidget->addTab(demarcateWidget, "Demarcate");   // 标定标签始终显示
+    
+    // 尝试加载标定插件
+    if (!pluginManager->isPluginLoaded(PluginType::DEMARCATE)) {
+        qDebug() << "Loading Demarcate plugin...";
+        pluginManager->loadPlugin("DemarcatePlugin.dll", PluginType::DEMARCATE);
+    }
+    
+    // 如果插件加载成功，替换为插件界面
+    QWidget* demarcatePluginWidget = pluginManager->createPluginWidget(PluginType::DEMARCATE, demarcateWidget);
+    if (demarcatePluginWidget) {
+        // 移除空白widget，使用插件widget
+        delete demarcateWidget;
+        int index = myTabWidget->indexOf(demarcateWidget);
+        myTabWidget->removeTab(index);
+        myTabWidget->insertTab(index, demarcatePluginWidget, "Demarcate");
+    } else {
+        // 插件未加载，显示提示信息
+        QVBoxLayout* layout = new QVBoxLayout(demarcateWidget);
+        QLabel* label = new QLabel("标定插件未加载，请确保 DemarcatePlugin.dll 存在", demarcateWidget);
+        label->setAlignment(Qt::AlignCenter);
+        label->setStyleSheet("color: red; font-size: 14px;");
+        layout->addWidget(label);
+        demarcateWidget->setLayout(layout);
+    }
+    
+    // 创建采色标签页（界面由插件提供）
+    QWidget* colorWidget = new QWidget(myTabWidget);
+    myTabWidget->addTab(colorWidget, "Color");       // 采色标签始终显示
+    
+    // 尝试加载采色插件
+    if (!pluginManager->isPluginLoaded(PluginType::COLOR)) {
+        qDebug() << "Loading Color plugin...";
+        pluginManager->loadPlugin("ColorPlugin.dll", PluginType::COLOR);
+    }
+    
+    // 如果插件加载成功，替换为插件界面
+    QWidget* colorPluginWidget = pluginManager->createPluginWidget(PluginType::COLOR, colorWidget);
+    if (colorPluginWidget) {
+        // 移除空白widget，使用插件widget
+        delete colorWidget;
+        int index = myTabWidget->indexOf(colorWidget);
+        myTabWidget->removeTab(index);
+        myTabWidget->insertTab(index, colorPluginWidget, "Color");
+    } else {
+        // 插件未加载，显示提示信息
+        QVBoxLayout* layout = new QVBoxLayout(colorWidget);
+        QLabel* label = new QLabel("采色插件未加载，请确保 ColorPlugin.dll 存在", colorWidget);
+        label->setAlignment(Qt::AlignCenter);
+        label->setStyleSheet("color: red; font-size: 14px;");
+        layout->addWidget(label);
+        colorWidget->setLayout(layout);
+    }
+    
+    // 设置DisplayDlg指针给插件
+    pluginManager->setDisplayDlgForPlugins(displayDlg);
     
     MatchDlg_5vs5* matchDlg = new MatchDlg_5vs5(myTabWidget);
     matchDlg->setDisplayDlg(displayDlg);  // 设置DisplayDlg指针

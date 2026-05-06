@@ -10,30 +10,24 @@ SOURCES += \
     QtWidgetDesign.cpp \
     CameraDlg.cpp \
     RobotDlg.cpp \
-    DemarcateDlg.cpp \
-    ColorDlg.cpp \
     MatchDlg_5vs5.cpp \
     Camera.cpp \
+    DisplayDlg.cpp \
     Debug.cpp \
-    Strategy.cpp \
-    Strategy_5vs5_1.cpp \
-    Strategy_5vs5_2.cpp \
-    Strategy_sjxbs.cpp
+    PluginManager.cpp
 
 HEADERS += \
     QtWidgetDesign.h \
     CameraDlg.h \
     RobotDlg.h \
-    DemarcateDlg.h \
-    ColorDlg.h \
     MatchDlg_5vs5.h \
     Camera.h \
+    DisplayDlg.h \
     Debug.h \
     USB340HID61_DEF.h \
-    Strategy.h \
-    Strategy_5vs5_1.h \
-    Strategy_5vs5_2.h \
-    Strategy_sjxbs.h
+    PluginInterface.h \
+    PluginManager.h \
+    StrategyPluginInterface.h
 
 CONFIG += c++11
 
