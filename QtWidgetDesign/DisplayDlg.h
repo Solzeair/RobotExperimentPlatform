@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QWidget>
 #include <QVBoxLayout>
@@ -14,7 +14,7 @@
 #include<algorithm>
 /*
 * DisplayDlg.h - 显示对话框头文件
-* 
+*
 * 功能：
 * 1. 定义显示对话框的接口和功能
 * 2. 管理左侧显示区域的图像显示
@@ -69,10 +69,16 @@ private:
 };
 
 // 常量定义
-const int DISPLAY_W = 640;
-const int DISPLAY_H = 480;
-const int MAX_ROBOT_NUM = 5;
-const int BALL = 0; // 球的对象类型标识
+#ifndef DISPLAY_W
+static const int DISPLAY_W = 640;
+#endif
+#ifndef DISPLAY_H
+static const int DISPLAY_H = 480;
+#endif
+#ifndef MAX_ROBOT_NUM
+static const int MAX_ROBOT_NUM = 5;
+#endif
+static const int BALL = 0; // Object type identifier for the ball
 
 // 机器人信息结构体
 typedef struct {
@@ -112,10 +118,21 @@ public:
     };
 
 public:
-    DisplayDlg(QWidget *parent = nullptr);
+    DisplayDlg(QWidget* parent = nullptr);
     ~DisplayDlg();
 
     void ShowSingle();
+
+    // Accessor for the single-grab pixel buffer.
+    // Used by DemarcateDlg::applyPerspectiveCorrection() to read and
+    // write back the camera frame before the polynomial fit is run.
+    // Returns a pointer to the raw RGB24 buffer (DISPLAY_W * DISPLAY_H * 3 bytes).
+    unsigned char* getDispSingle() { return m_pDispSingle; }
+
+    // Register the DemarcateDlg so that BORDER_SET mouse clicks
+    // are forwarded to DemarcateDlg::PushPoint().
+    // Called from QtWidgetDesign.cpp after both objects are created.
+    void setDemarcateDlg(class DemarcateDlg* dlg) { m_pDemarcateDlg = dlg; }
     void ShowDynamic();
     void ShowCarNum();
     void ShowColorTest(int(*HSI)[6], int object);
@@ -128,16 +145,16 @@ public:
 
     // 颜色分析
     QRect GetRect() const { return m_Rect; }
-    void ColorAnalyse(const QRect &rect, int yi[], std::vector<QPoint> &vecColorSet);
-    void ColorAnalyse(const std::vector<QPoint> &pts, int yi[], std::vector<QPoint> &vecColorSet);
+    void ColorAnalyse(const QRect& rect, int yi[], std::vector<QPoint>& vecColorSet);
+    void ColorAnalyse(const std::vector<QPoint>& pts, int yi[], std::vector<QPoint>& vecColorSet);
     int MINS(int R, int G, int B, int N);
     int GetMinValue(int val1, int val2, int val3, int val4);
-    void RGBToHS(int m, int n, unsigned char *P, int &H, int &S, int &I);
+    void RGBToHS(int m, int n, unsigned char* P, int& H, int& S, int& I);
 
 protected:
-    void paintEvent(QPaintEvent *event) override;
-    void mouseMoveEvent(QMouseEvent *event) override;
-    void mousePressEvent(QMouseEvent *event) override;
+    void paintEvent(QPaintEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
 
 private slots:
     void onTimer();
@@ -145,14 +162,14 @@ private slots:
 
 private:
     void initUI();
-    void ProcessImage(unsigned char *pBmp);
+    void ProcessImage(unsigned char* pBmp);
     void StartGame();
     bool GrabSingle();
     void IdentifyTest();
     void StartTest();
 
-    bool FindPixel(int object, int m, int n, unsigned char *P);
-    bool IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart);
+    bool FindPixel(int object, int m, int n, unsigned char* P);
+    bool IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart);
     void IdentifyAll();
     void IdentiRobo(int ObjectCount);
 
@@ -161,27 +178,31 @@ private:
     int FindRobotIDD(QPoint RP1, QPoint RP2);
     bool FindBlackID(int m, int n, int Num);
 
-    bool SeachOppAndBall(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart);
-    bool SearchTeam(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart);
+    bool SeachOppAndBall(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart);
+    bool SearchTeam(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart);
 
-    int screenBuffer(int m, int n, unsigned char *P);
+    int screenBuffer(int m, int n, unsigned char* P);
     bool JudgePixel(int object, int H, int S, int I);
     int JudgeColor(int a, int b, int c);
 
-    void DrawAll(QPainter *painter);
-    void DrawOpp(QPainter *painter);
-    void DrawBall(QPainter *painter);
-    void DrawRobot(QPainter *painter);
+    void DrawAll(QPainter* painter);
+    void DrawOpp(QPainter* painter);
+    void DrawBall(QPainter* painter);
+    void DrawRobot(QPainter* painter);
     void ClearBallTrail(); // 清除足球轨迹
 
 private:
     // 图像
     QSize m_ImageSize;
-    unsigned char *m_pDispBitmap, *m_pDispSingle;
-    unsigned char *m_pIdentify; // 图像数据指针
+    unsigned char* m_pDispBitmap, * m_pDispSingle;
+    unsigned char* m_pIdentify; // image data pointer
+
+    // Pointer to the calibration dialog; set via setDemarcateDlg().
+    // When m_setStatus == BORDER_SET mouse clicks are forwarded here.
+    class DemarcateDlg* m_pDemarcateDlg = nullptr;
 
     // 线程
-    QTimer *m_grabTimer;
+    QTimer* m_grabTimer;
     bool m_bErrorSign;
 
     // 状态
@@ -194,7 +215,7 @@ private:
     // 绘图
     QImage m_groundImage;
     QPixmap m_carNumPixmap; // 车号图像（预加载）
-    
+
     // 足球轨迹
     std::vector<QPoint> m_ballTrail;
     static const int MAX_TRAIL_LENGTH = 50; // 轨迹最大长度
@@ -222,7 +243,7 @@ private:
     int stackx[StackSize];
     int stacky[StackSize];
     int stackPointer;
-    bool pop(int &x, int &y);
+    bool pop(int& x, int& y);
     bool push(int x, int y);
     void emptyStack();
 
@@ -238,10 +259,10 @@ private:
     // 帧率计算相关
     CMovingAvg<double, 20> m_DisplayAvg;
     double m_fps;
-    QTimer *fpsTimer;
-    QLabel *fpsLabel;
+    QTimer* fpsTimer;
+    QLabel* fpsLabel;
 
     // 界面控件
-    QLabel *displayLabel;
-    QVBoxLayout *mainLayout;
+    QLabel* displayLabel;
+    QVBoxLayout* mainLayout;
 };

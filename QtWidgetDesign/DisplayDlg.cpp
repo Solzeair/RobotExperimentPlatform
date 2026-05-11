@@ -1,10 +1,11 @@
-// DisplayDlg.cpp - 左侧显示区域实现文件
-// 功能：实现摄像头图像显示、目标识别、颜色分析和足球机器人比赛相关功能
-//代码存在问题未修改
+﻿// DisplayDlg.cpp - Image display area implementation
+// Handles camera capture, target recognition, colour analysis,
+// and football robot match visualisation.
 #include "DisplayDlg.h"
 #include "Camera.h"
 #include "Debug.h"
 #include "ColorDlg.h"
+#include "DemarcateDlg.h"   // Needed to forward BORDER_SET clicks
 #include <cmath>
 
 // 自定义MIN函数，计算三个值中的最小值
@@ -26,8 +27,8 @@ static unsigned char* pBuffer = nullptr;
 int robot_xy[361][12][2];             //机器人方向图像关键点坐标
 
 //功能：初始化显示区域，设置图像数据、机器人形状坐标和颜色转换表
- 
-DisplayDlg::DisplayDlg(QWidget *parent)
+
+DisplayDlg::DisplayDlg(QWidget* parent)
     : QWidget(parent)
     , m_ImageSize(DISPLAY_W, DISPLAY_H)
     , m_bErrorSign(false)
@@ -150,7 +151,7 @@ DisplayDlg::~DisplayDlg()
 }
 
 // 功能：创建显示区域、帧率标签和定时器
- 
+
 void DisplayDlg::initUI()
 {
     // 设置字体
@@ -208,14 +209,14 @@ void DisplayDlg::ShowSingle()
 }
 
 //功能：启动定时器，持续从摄像头获取图像并显示
- 
+
 void DisplayDlg::ShowDynamic()
 {
     // 确保停止之前的状态
     Stop();
-    
+
     // 确保摄像头已打开
-    Camera *pCamera = Camera::GetInstance();
+    Camera* pCamera = Camera::GetInstance();
     if (!pCamera->IsOpen()) {
         if (!pCamera->Open()) {
             // 如果摄像头打开失败，显示错误信息
@@ -223,21 +224,21 @@ void DisplayDlg::ShowDynamic()
             return;
         }
     }
-    
+
     // 确保摄像头处于抓取状态
     if (!pCamera->IsGrabbing()) {
         pCamera->StartGrabbing();
     }
-    
+
     // 设置状态为显示模式
     m_status = STATUS::Display;
-    
+
     // 开始计时
     m_DisplayWatch.start();
-    
+
     // 启动抓取线程
     m_grabTimer->start(50); // 与MFC版本保持一致
-    
+
     // 立即获取并显示一帧图像，避免切换时出现黑屏或显示旧图像
     unsigned char* tempBuffer = new unsigned char[DISPLAY_W * DISPLAY_H * 3];
     if (pCamera->RetrieveResult(tempBuffer)) {
@@ -247,7 +248,7 @@ void DisplayDlg::ShowDynamic()
         displayLabel->setPixmap(pixmap);
     }
     delete[] tempBuffer;
-    
+
     // 处理所有待处理事件，确保界面及时响应
     QCoreApplication::processEvents();
 }
@@ -258,21 +259,22 @@ void DisplayDlg::ShowDynamic()
  */
 void DisplayDlg::ShowCarNum()
 {
-    Camera *pCamera = Camera::GetInstance();
+    Camera* pCamera = Camera::GetInstance();
     if (pCamera->IsGrabbing()) {
         this->Stop();
     }
     // 使用预加载的车号图像，避免从磁盘加载延迟
     if (!m_carNumPixmap.isNull()) {
         displayLabel->setPixmap(m_carNumPixmap);
-    } else {
+    }
+    else {
         // 如果图像加载失败，显示默认文本
         displayLabel->setText("车号显示");
     }
 }
 
 // 功能：根据颜色阈值显示符合条件的图像区域
- 
+
 void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
 {
     if (!(m_status == STATUS::Stop || m_status == STATUS::Prepare))
@@ -283,8 +285,8 @@ void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
 
     unsigned char* m_pTestBitmap;
     m_pTestBitmap = new unsigned char[m_ImageSize.width() * m_ImageSize.height() * 3];
-    unsigned char *pOrigin = m_pDispSingle;
-    unsigned char *pTest = m_pTestBitmap;
+    unsigned char* pOrigin = m_pDispSingle;
+    unsigned char* pTest = m_pTestBitmap;
 
     int i, j, R, G, B, H, S, I;
     if (HSI[object][1] > HSI[object][0])
@@ -343,7 +345,7 @@ void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
 }
 
 // 功能：启动测试模式，定时获取并处理图像
- 
+
 void DisplayDlg::ShowRunTest(bool ImageSeg)
 {
     if (ImageSeg)
@@ -375,14 +377,14 @@ void DisplayDlg::ShowInitGame()
     ballBk.x = 0.0;
     ballBk.y = 0.0;
     ballBk.theta = 0.0;
-    
+
     // 清除足球轨迹
     ClearBallTrail();
-    
+
     m_pIdentify = m_pDispSingle;
     IdentifyAll();
     m_status = STATUS::Prepare;
-    
+
     // 启动定时器，持续更新画面
     if (!m_grabTimer->isActive()) {
         m_grabTimer->start(33); // 约30fps
@@ -392,7 +394,7 @@ void DisplayDlg::ShowInitGame()
 }
 
 // 功能：设置游戏状态，启动游戏逻辑
- 
+
 void DisplayDlg::ShowStartGame()
 {
     m_status = STATUS::Game;
@@ -406,20 +408,20 @@ void DisplayDlg::Stop()
     if (!m_bErrorSign) {
         // 停止定时器
         m_grabTimer->stop();
-        
+
         // 停止摄像头抓取
-        Camera *pCamera = Camera::GetInstance();
+        Camera* pCamera = Camera::GetInstance();
         if (pCamera->IsGrabbing()) {
             pCamera->StopGrabbing();
         }
-        
+
         // 设置状态为停止
         m_status = STATUS::Stop;
     }
 }
 
 //功能：设置当前操作状态
- 
+
 void DisplayDlg::SelectSetStatus(SET_STATUS s)
 {
     m_setStatus = s;
@@ -427,7 +429,7 @@ void DisplayDlg::SelectSetStatus(SET_STATUS s)
 
 // 功能：绘制足球场背景和机器人
 
-void DisplayDlg::paintEvent(QPaintEvent *event)
+void DisplayDlg::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
 
@@ -436,19 +438,19 @@ void DisplayDlg::paintEvent(QPaintEvent *event)
         QPixmap pixmap(DISPLAY_W, DISPLAY_H);
         pixmap.fill(Qt::transparent);
         QPainter painter(&pixmap);
-        
+
         // 绘制足球场背景
         painter.drawImage(0, 0, m_groundImage);
-        
+
         // 绘制机器人
         DrawRobot(&painter);
-        
+
         // 绘制对手
         DrawOpp(&painter);
-        
+
         // 绘制球
         DrawBall(&painter);
-        
+
         // 设置绘制好的pixmap
         displayLabel->setPixmap(pixmap);
     }
@@ -463,8 +465,8 @@ void DisplayDlg::ClearBallTrail()
 }
 
 // 功能：处理颜色设置时的鼠标拖拽操作
- 
-void DisplayDlg::mouseMoveEvent(QMouseEvent *event)
+
+void DisplayDlg::mouseMoveEvent(QMouseEvent* event)
 {
     QPoint pos = event->pos();
     if (m_setStatus == SET_STATUS::COLOR_SET && (event->buttons() & Qt::LeftButton)) {
@@ -479,11 +481,24 @@ void DisplayDlg::mouseMoveEvent(QMouseEvent *event)
 }
 
 //功能：处理颜色设置时的鼠标按下操作
- 
-void DisplayDlg::mousePressEvent(QMouseEvent *event)
+
+void DisplayDlg::mousePressEvent(QMouseEvent* event)
 {
     QPoint pos = event->pos();
-    if (m_setStatus == SET_STATUS::COLOR_SET) {
+
+    if (m_setStatus == SET_STATUS::BORDER_SET) {
+        // Forward the click to the calibration dialog so it can
+        // collect the 25 field control points.
+        if (m_pDemarcateDlg) {
+            m_pDemarcateDlg->PushPoint(pos);
+        }
+        // Draw a small red cross at the clicked position as visual feedback
+        QPainter painter(displayLabel);
+        painter.setPen(QPen(Qt::red, 2));
+        painter.drawLine(pos.x() - 5, pos.y(), pos.x() + 5, pos.y());
+        painter.drawLine(pos.x(), pos.y() - 5, pos.x(), pos.y() + 5);
+    }
+    else if (m_setStatus == SET_STATUS::COLOR_SET) {
         m_Rect.setLeft(pos.x());
         m_Rect.setTop(pos.y());
         m_Rect.setRight(pos.x() + 1);
@@ -499,7 +514,7 @@ void DisplayDlg::mousePressEvent(QMouseEvent *event)
 
 void DisplayDlg::onTimer()
 {
-    Camera *pCamera = Camera::GetInstance();
+    Camera* pCamera = Camera::GetInstance();
     if (!pCamera->IsOpen()) {
         if (!pCamera->Open()) {
             return;
@@ -513,7 +528,7 @@ void DisplayDlg::onTimer()
     if (!pBuffer) {
         pBuffer = new unsigned char[DISPLAY_W * DISPLAY_H * 3];
     }
-    
+
     if (pCamera->RetrieveResult(pBuffer)) {
         ProcessImage(pBuffer);
     }
@@ -527,7 +542,7 @@ void DisplayDlg::onTimer()
 
 
 //功能：计算并显示实时帧率
- 
+
 void DisplayDlg::updateFPS()
 {
     double avg = m_DisplayAvg.Avg();
@@ -538,43 +553,43 @@ void DisplayDlg::updateFPS()
 
 //功能：根据当前状态处理图像并显示
 
-void DisplayDlg::ProcessImage(unsigned char *pBmp)
+void DisplayDlg::ProcessImage(unsigned char* pBmp)
 {
-    Camera *pCamera = Camera::GetInstance();
+    Camera* pCamera = Camera::GetInstance();
     // 转换图像格式
     pCamera->ConvertBitmap(m_pDispBitmap, pBmp, m_ImageSize.width(), m_ImageSize.height());
 
     switch (m_status) {
     case STATUS::Display:
-        {
-            QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-            QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
-            displayLabel->setPixmap(pixmap);
-            m_DisplayAvg.Add(m_DisplayWatch.elapsed());
-            m_DisplayWatch.restart();
-        }
-        break;
+    {
+        QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
+        QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+        displayLabel->setPixmap(pixmap);
+        m_DisplayAvg.Add(m_DisplayWatch.elapsed());
+        m_DisplayWatch.restart();
+    }
+    break;
     case STATUS::RunTest:
-        {
-            this->StartTest();
-            m_DisplayAvg.Add(m_DisplayWatch.elapsed());
-            m_DisplayWatch.restart();
-        }
-        break;
+    {
+        this->StartTest();
+        m_DisplayAvg.Add(m_DisplayWatch.elapsed());
+        m_DisplayWatch.restart();
+    }
+    break;
     case STATUS::RunTestSeg:
-        {
-            this->IdentifyTest();
-            m_DisplayAvg.Add(m_DisplayWatch.elapsed());
-            m_DisplayWatch.restart();
-        }
-        break;
+    {
+        this->IdentifyTest();
+        m_DisplayAvg.Add(m_DisplayWatch.elapsed());
+        m_DisplayWatch.restart();
+    }
+    break;
     case STATUS::Game:
-        {
-            this->StartGame();
-            m_DisplayAvg.Add(m_DisplayWatch.elapsed());
-            m_DisplayWatch.restart();
-        }
-        break;
+    {
+        this->StartGame();
+        m_DisplayAvg.Add(m_DisplayWatch.elapsed());
+        m_DisplayWatch.restart();
+    }
+    break;
     default:
         break;
     }
@@ -584,7 +599,7 @@ void DisplayDlg::ProcessImage(unsigned char *pBmp)
 
 bool DisplayDlg::GrabSingle()
 {
-    Camera *pCamera = Camera::GetInstance();
+    Camera* pCamera = Camera::GetInstance();
     if (pCamera->IsGrabbing()) {
         this->Stop();
     }
@@ -599,8 +614,8 @@ bool DisplayDlg::GrabSingle()
 }
 
 //功能：从栈中弹出一个坐标点
- 
-bool DisplayDlg::pop(int &x, int &y)
+
+bool DisplayDlg::pop(int& x, int& y)
 {
     if (stackPointer > 0)
     {
@@ -634,8 +649,8 @@ void DisplayDlg::emptyStack()
 }
 
 //功能：将RGB颜色转换为HSI颜色空间
- 
-void DisplayDlg::RGBToHS(int m, int n, unsigned char *P, int &H, int &S, int &I)
+
+void DisplayDlg::RGBToHS(int m, int n, unsigned char* P, int& H, int& S, int& I)
 {
     int R, G, B;
     int index = (n * m_ImageSize.width() + m) * 3;
@@ -648,8 +663,8 @@ void DisplayDlg::RGBToHS(int m, int n, unsigned char *P, int &H, int &S, int &I)
 }
 
 // 功能：绘制足球场背景、机器人和足球
- 
-void DisplayDlg::DrawAll(QPainter *painter)
+
+void DisplayDlg::DrawAll(QPainter* painter)
 {
     // 绘制足球场背景
     painter->drawImage(0, 0, m_groundImage);
@@ -665,8 +680,8 @@ void DisplayDlg::DrawAll(QPainter *painter)
 }
 
 //功能：绘制对方机器人
- 
-void DisplayDlg::DrawOpp(QPainter *painter)
+
+void DisplayDlg::DrawOpp(QPainter* painter)
 {
     painter->setPen(QPen(Qt::magenta, 1));
     painter->setBrush(QBrush(Qt::green));
@@ -683,19 +698,19 @@ void DisplayDlg::DrawOpp(QPainter *painter)
 
             // 绘制机器人形状
             painter->drawLine(x + robot_xy[theta][0][0], y + robot_xy[theta][0][1],
-                              x + robot_xy[theta][1][0], y + robot_xy[theta][1][1]);
+                x + robot_xy[theta][1][0], y + robot_xy[theta][1][1]);
             painter->drawLine(x + robot_xy[theta][1][0], y + robot_xy[theta][1][1],
-                              x + robot_xy[theta][3][0], y + robot_xy[theta][3][1]);
+                x + robot_xy[theta][3][0], y + robot_xy[theta][3][1]);
             painter->drawLine(x + robot_xy[theta][3][0], y + robot_xy[theta][3][1],
-                              x + robot_xy[theta][2][0], y + robot_xy[theta][2][1]);
+                x + robot_xy[theta][2][0], y + robot_xy[theta][2][1]);
             painter->drawLine(x + robot_xy[theta][2][0], y + robot_xy[theta][2][1],
-                              x + robot_xy[theta][0][0], y + robot_xy[theta][0][1]);
+                x + robot_xy[theta][0][0], y + robot_xy[theta][0][1]);
             painter->drawLine(x + robot_xy[theta][4][0], y + robot_xy[theta][4][1],
-                              x + robot_xy[theta][5][0], y + robot_xy[theta][5][1]);
+                x + robot_xy[theta][5][0], y + robot_xy[theta][5][1]);
             painter->drawLine(x + robot_xy[theta][4][0], y + robot_xy[theta][4][1],
-                              x + robot_xy[theta][10][0], y + robot_xy[theta][10][1]);
+                x + robot_xy[theta][10][0], y + robot_xy[theta][10][1]);
             painter->drawLine(x + robot_xy[theta][4][0], y + robot_xy[theta][4][1],
-                              x + robot_xy[theta][11][0], y + robot_xy[theta][11][1]);
+                x + robot_xy[theta][11][0], y + robot_xy[theta][11][1]);
 
             // 绘制编号
             if (x - 4 >= 0 && y - 5 >= 0)
@@ -708,7 +723,7 @@ void DisplayDlg::DrawOpp(QPainter *painter)
 
 // 功能：绘制足球位置
 
-void DisplayDlg::DrawBall(QPainter *painter)
+void DisplayDlg::DrawBall(QPainter* painter)
 {
     painter->setPen(QPen(Qt::red, 1));
     painter->setBrush(QBrush(Qt::red));
@@ -717,26 +732,26 @@ void DisplayDlg::DrawBall(QPainter *painter)
     {
         int x = (int)(ballInfor.x * 2.5) + 45;
         int y = (int)(ballInfor.y * 2.5) + 15;
-        
+
         // 添加当前位置到轨迹
         m_ballTrail.push_back(QPoint(x, y));
-        
+
         // 限制轨迹长度
         if (m_ballTrail.size() > MAX_TRAIL_LENGTH)
         {
             m_ballTrail.erase(m_ballTrail.begin());
         }
-        
+
         // 绘制轨迹
         if (m_ballTrail.size() > 1)
         {
             painter->setPen(QPen(Qt::yellow, 2, Qt::DotLine));
             for (size_t i = 1; i < m_ballTrail.size(); i++)
             {
-                painter->drawLine(m_ballTrail[i-1], m_ballTrail[i]);
+                painter->drawLine(m_ballTrail[i - 1], m_ballTrail[i]);
             }
         }
-        
+
         // 绘制足球
         painter->setPen(QPen(Qt::red, 1));
         painter->setBrush(QBrush(Qt::red));
@@ -745,8 +760,8 @@ void DisplayDlg::DrawBall(QPainter *painter)
 }
 
 //功能：绘制己方机器人
- 
-void DisplayDlg::DrawRobot(QPainter *painter)
+
+void DisplayDlg::DrawRobot(QPainter* painter)
 {
     painter->setPen(QPen(Qt::yellow, 1));
 
@@ -762,19 +777,19 @@ void DisplayDlg::DrawRobot(QPainter *painter)
 
             // 绘制机器人形状
             painter->drawLine(x + robot_xy[theta][0][0], y + robot_xy[theta][0][1],
-                              x + robot_xy[theta][1][0], y + robot_xy[theta][1][1]);
+                x + robot_xy[theta][1][0], y + robot_xy[theta][1][1]);
             painter->drawLine(x + robot_xy[theta][1][0], y + robot_xy[theta][1][1],
-                              x + robot_xy[theta][3][0], y + robot_xy[theta][3][1]);
+                x + robot_xy[theta][3][0], y + robot_xy[theta][3][1]);
             painter->drawLine(x + robot_xy[theta][3][0], y + robot_xy[theta][3][1],
-                              x + robot_xy[theta][2][0], y + robot_xy[theta][2][1]);
+                x + robot_xy[theta][2][0], y + robot_xy[theta][2][1]);
             painter->drawLine(x + robot_xy[theta][2][0], y + robot_xy[theta][2][1],
-                              x + robot_xy[theta][0][0], y + robot_xy[theta][0][1]);
+                x + robot_xy[theta][0][0], y + robot_xy[theta][0][1]);
             painter->drawLine(x + robot_xy[theta][4][0], y + robot_xy[theta][4][1],
-                              x + robot_xy[theta][5][0], y + robot_xy[theta][5][1]);
+                x + robot_xy[theta][5][0], y + robot_xy[theta][5][1]);
             painter->drawLine(x + robot_xy[theta][4][0], y + robot_xy[theta][4][1],
-                              x + robot_xy[theta][10][0], y + robot_xy[theta][10][1]);
+                x + robot_xy[theta][10][0], y + robot_xy[theta][10][1]);
             painter->drawLine(x + robot_xy[theta][4][0], y + robot_xy[theta][4][1],
-                              x + robot_xy[theta][11][0], y + robot_xy[theta][11][1]);
+                x + robot_xy[theta][11][0], y + robot_xy[theta][11][1]);
 
             // 绘制编号
             if (x - 4 >= 0 && y - 5 >= 0)
@@ -785,7 +800,7 @@ void DisplayDlg::DrawRobot(QPainter *painter)
     }
 }
 
- //功能：计算三个或四个值中的最小值
+//功能：计算三个或四个值中的最小值
 int DisplayDlg::GetMinValue(int val1, int val2, int val3, int val4)
 {
     // 清晰的最小值逻辑，易维护
@@ -802,7 +817,7 @@ int DisplayDlg::MINS(int R, int G, int B, int N)
 }
 
 //功能：计算图像点的灰度值
-int DisplayDlg::screenBuffer(int m, int n, unsigned char *P)
+int DisplayDlg::screenBuffer(int m, int n, unsigned char* P)
 {
     int R, G, B;
     int index = (n * m_ImageSize.width() + m) * 3;
@@ -813,10 +828,10 @@ int DisplayDlg::screenBuffer(int m, int n, unsigned char *P)
 }
 
 //功能：判断像素是否符合指定对象的颜色阈值
- 
+
 bool DisplayDlg::JudgePixel(int object, int H, int S, int I)
 {
-    ColorDlg *pColorDlg = ColorDlg::getInstance();
+    ColorDlg* pColorDlg = ColorDlg::getInstance();
     const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
 
     if (HSIThreshold[object][1] > HSIThreshold[object][0])
@@ -841,14 +856,14 @@ bool DisplayDlg::JudgePixel(int object, int H, int S, int I)
 }
 
 
- // 功能：判断像素颜色所属的对象类别
- 
+// 功能：判断像素颜色所属的对象类别
+
 int DisplayDlg::JudgeColor(int a, int b, int c)
 {
     int obj = -1;
     int H, S, I;
     int minobj = 100;
-    ColorDlg *pColorDlg = ColorDlg::getInstance();
+    ColorDlg* pColorDlg = ColorDlg::getInstance();
     const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
     for (int i = 0; i <= 10; i++)
     {
@@ -899,8 +914,8 @@ int DisplayDlg::JudgeColor(int a, int b, int c)
 }
 
 // 功能：查找符合目标对象颜色的像素
- 
-bool DisplayDlg::FindPixel(int object, int m, int n, unsigned char *P)
+
+bool DisplayDlg::FindPixel(int object, int m, int n, unsigned char* P)
 {
     int H, S, I;
     RGBToHS(m, n, P, H, S, I);
@@ -908,8 +923,8 @@ bool DisplayDlg::FindPixel(int object, int m, int n, unsigned char *P)
 }
 
 // 功能：使用LUT搜索并识别目标对象
- 
-bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart)
+
+bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart)
 {
     int x, y;
     int startindex, endindex;
@@ -1010,11 +1025,11 @@ void DisplayDlg::IdentifyAll()
     m_yTop = n;
     m_yBottom = 0;
 
-    unsigned char *m_pTestBitmap = new unsigned char[m * n * 3];
+    unsigned char* m_pTestBitmap = new unsigned char[m * n * 3];
     memcpy(m_pTestBitmap, m_pDispBitmap, m * n * 3);
-    unsigned char *pTest = m_pTestBitmap;
+    unsigned char* pTest = m_pTestBitmap;
 
-    ColorDlg *pColorDlg = ColorDlg::getInstance();
+    ColorDlg* pColorDlg = ColorDlg::getInstance();
     const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
 
     for (j = 0; j < n; j++)
@@ -1061,7 +1076,7 @@ void DisplayDlg::IdentifyAll()
 }
 
 // 功能：过滤足球位置，防止抖动
- 
+
 void DisplayDlg::BallPosFilter()
 {
     if (!ballInfor.found)
@@ -1099,11 +1114,11 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
         OpprobotInfor[i].found = false;
     }
 
-    unsigned char *m_pTestBitmap = new unsigned char[m * n * 3];
+    unsigned char* m_pTestBitmap = new unsigned char[m * n * 3];
     memcpy(m_pTestBitmap, m_pDispBitmap, m * n * 3);
-    unsigned char *pTest = m_pTestBitmap;
+    unsigned char* pTest = m_pTestBitmap;
 
-    ColorDlg *pColorDlg = ColorDlg::getInstance();
+    ColorDlg* pColorDlg = ColorDlg::getInstance();
     const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
 
     for (j = 0; j < n; j++)
@@ -1170,7 +1185,7 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
 }
 
 // 功能：根据位置变化查找机器人ID
- 
+
 int DisplayDlg::FindRobotID(QPoint RP1, QPoint RP2)
 {
     int i;
@@ -1196,7 +1211,7 @@ int DisplayDlg::FindRobotID(QPoint RP1, QPoint RP2)
 }
 
 //功能：根据距离查找机器人ID
- 
+
 int DisplayDlg::FindRobotIDD(QPoint RP1, QPoint RP2)
 {
     int i;
@@ -1220,7 +1235,7 @@ int DisplayDlg::FindRobotIDD(QPoint RP1, QPoint RP2)
 }
 
 // 功能：查找黑色区域
- 
+
 bool DisplayDlg::FindBlackID(int m, int n, int Num)
 {
     int i;
@@ -1244,8 +1259,8 @@ bool DisplayDlg::FindBlackID(int m, int n, int Num)
 }
 
 // 功能：搜索对手和足球
- 
-bool DisplayDlg::SeachOppAndBall(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart)
+
+bool DisplayDlg::SeachOppAndBall(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart)
 {
     int x, y;
     int startindex;
@@ -1295,8 +1310,8 @@ bool DisplayDlg::SeachOppAndBall(int tab, int Startx, int Starty, int SizeMin, i
 }
 
 //功能：搜索队伍
- 
-bool DisplayDlg::SearchTeam(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char *pStart)
+
+bool DisplayDlg::SearchTeam(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart)
 {
     int x, y;
     int startindex;
@@ -1346,13 +1361,13 @@ bool DisplayDlg::SearchTeam(int tab, int Startx, int Starty, int SizeMin, int Si
 }
 
 //功能：测试识别功能
- 
+
 void DisplayDlg::IdentifyTest()
 {
 }
 
 //功能：开始比赛，进行目标识别和绘制
- 
+
 void DisplayDlg::StartGame()
 {
     // 比赛开始，需要进行目标识别和绘制
@@ -1360,8 +1375,8 @@ void DisplayDlg::StartGame()
 }
 
 //功能：分析矩形区域内的颜色
- 
-void DisplayDlg::ColorAnalyse(const QRect &rect, int yi[], std::vector<QPoint> &vecColorSet)
+
+void DisplayDlg::ColorAnalyse(const QRect& rect, int yi[], std::vector<QPoint>& vecColorSet)
 {
     vecColorSet.clear();
     int x1 = rect.left();
@@ -1386,8 +1401,8 @@ void DisplayDlg::ColorAnalyse(const QRect &rect, int yi[], std::vector<QPoint> &
 }
 
 // 功能：分析点集合内的颜色
- 
-void DisplayDlg::ColorAnalyse(const std::vector<QPoint> &pts, int yi[], std::vector<QPoint> &vecColorSet)
+
+void DisplayDlg::ColorAnalyse(const std::vector<QPoint>& pts, int yi[], std::vector<QPoint>& vecColorSet)
 {
     vecColorSet.clear();
     int H, S, I;
