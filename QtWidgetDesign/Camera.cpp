@@ -1,4 +1,4 @@
-#include "Camera.h"
+﻿#include "Camera.h"
 #include <QFile>
 #include <QTextStream>
 #include <QCoreApplication>
@@ -369,7 +369,9 @@ void Camera::WriteConfig()
 */
 bool Camera::Open()
 {
-    if (IsOpen())
+    Debug::get()->print(L"[Debug模式] 假装摄像头已打开，跳过真实硬件连接...");
+    return true;
+    /*if (IsOpen())
         Close();
     try
     {
@@ -412,7 +414,7 @@ bool Camera::Open()
         Debug::get()->print(L"摄像头打开失败...");
         Close();
         return false;
-    }
+    }*/
 }
 
 /**
