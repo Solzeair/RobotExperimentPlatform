@@ -369,8 +369,10 @@ void Camera::WriteConfig()
 */
 bool Camera::Open()
 {
+    // 测试摄像头是否能正常运行
     Debug::get()->print(L"[Debug模式] 假装摄像头已打开，跳过真实硬件连接...");
     return true;
+    // 以下为正常注释
     /*if (IsOpen())
         Close();
     try
