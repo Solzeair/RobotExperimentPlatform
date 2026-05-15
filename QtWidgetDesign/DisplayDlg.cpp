@@ -546,7 +546,7 @@ void DisplayDlg::onTimer()
 void DisplayDlg::updateFPS()
 {
     double avg = m_DisplayAvg.Avg();
-    m_fps = avg == 0 ? 0.0 : 1.0 / avg;
+    m_fps = avg == 0 ? 0.0 : 1000.0 / avg;
     m_DisplayAvg.Reset();
     fpsLabel->setText(QString("FPS: %1").arg(m_fps, 0, 'f', 2));
 }
@@ -557,7 +557,8 @@ void DisplayDlg::ProcessImage(unsigned char* pBmp)
 {
     Camera* pCamera = Camera::GetInstance();
     // 转换图像格式
-    pCamera->ConvertBitmap(m_pDispBitmap, pBmp, m_ImageSize.width(), m_ImageSize.height());
+    // pCamera->ConvertBitmap(m_pDispBitmap, pBmp, m_ImageSize.width(), m_ImageSize.height());
+    memcpy(m_pDispBitmap, pBmp, m_ImageSize.width() * m_ImageSize.height() * 3);
 
     switch (m_status) {
     case STATUS::Display:

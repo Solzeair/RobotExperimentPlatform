@@ -531,6 +531,35 @@ void Camera::Close()
 * @param ptrResult - 存储图像数据的指针
 * @return bool - 是否成功检索到图像
 */
+//bool Camera::RetrieveResult(void* ptrResult)
+//{
+//    if (!IsOpen() || !IsGrabbing())
+//        return false;
+//    try
+//    {
+//        CGrabResultPtr ptrGrabResult;
+//        // 将 300 改为 1000 毫秒，多给点宽容度
+//        if (m_camera.RetrieveResult(1000, ptrGrabResult, TimeoutHandling_Return)) {
+//            if (ptrGrabResult->GrabSucceeded()) {
+//                ConvertBitmap((unsigned char*)ptrResult, (unsigned char*)ptrGrabResult->GetBuffer(), DISPLAY_W, DISPLAY_H);
+//                return true;
+//            }
+//            else {
+//                // 如果抓图失败，打印出具体的底层错误（非常重要！）
+//                Debug::get()->print(QString("抓图丢包或失败: %1").arg(ptrGrabResult->GetErrorDescription().c_str()).toStdWString().c_str());
+//            }
+//        }
+//        return false;
+//    }
+//    catch (...)
+//    {
+//        StopGrabbing();
+//        return false;
+//    }
+//}
+// 在文件顶部确保包含了格式转换的头文件（通常已被 PylonIncludes.h 包含，保险起见可以确认一下）
+#include <pylon/ImageFormatConverter.h>
+
 bool Camera::RetrieveResult(void* ptrResult)
 {
     if (!IsOpen() || !IsGrabbing())
@@ -538,15 +567,20 @@ bool Camera::RetrieveResult(void* ptrResult)
     try
     {
         CGrabResultPtr ptrGrabResult;
-        // 将 300 改为 1000 毫秒，多给点宽容度
-        if (m_camera.RetrieveResult(1000, ptrGrabResult, TimeoutHandling_Return)) {
-            if (ptrGrabResult->GrabSucceeded()) {
-                ConvertBitmap((unsigned char*)ptrResult, (unsigned char*)ptrGrabResult->GetBuffer(), DISPLAY_W, DISPLAY_H);
+        // 建议把超时时间改宽容一点，比如 1000ms
+        if (m_camera.RetrieveResult(1000, ptrGrabResult, TimeoutHandling_Return))
+        {
+            if (ptrGrabResult->GrabSucceeded())
+            {
+                // 🔥 扔掉旧的 ConvertBitmap，使用 Pylon 官方的高性能转换器
+                Pylon::CImageFormatConverter converter;
+                converter.OutputPixelFormat = Pylon::PixelType_RGB8packed;
+                converter.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
+
+                // 这一步会自动处理任何 Bayer/Mono/YUV 格式，直接输出完美的 RGB 存入 pBuffer
+                converter.Convert(ptrResult, DISPLAY_W * DISPLAY_H * 3, ptrGrabResult);
+
                 return true;
-            }
-            else {
-                // 如果抓图失败，打印出具体的底层错误（非常重要！）
-                Debug::get()->print(QString("抓图丢包或失败: %1").arg(ptrGrabResult->GetErrorDescription().c_str()).toStdWString().c_str());
             }
         }
         return false;
@@ -557,7 +591,6 @@ bool Camera::RetrieveResult(void* ptrResult)
         return false;
     }
 }
-
 /**
 * @brief 抓取单帧图像
 * @param ptrResult - 存储图像数据的指针
