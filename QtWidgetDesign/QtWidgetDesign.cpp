@@ -98,10 +98,12 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
             displayDlg->ShowCarNum();
             break;
         case 2: // Demarcate标签页
-            displayDlg->ShowSingle();
+            displayDlg->ShowDynamic();
+            // displayDlg->ShowSingle();
             break;
         case 3: // Color标签页
-            displayDlg->ShowSingle();
+            // displayDlg->ShowSingle();
+            displayDlg->ShowDynamic();
             displayDlg->SelectSetStatus(DisplayDlg::SET_STATUS::COLOR_SET);
             break;
         case 4: // competition标签页

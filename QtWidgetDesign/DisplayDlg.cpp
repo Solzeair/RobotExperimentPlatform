@@ -204,7 +204,7 @@ void DisplayDlg::ShowSingle()
 {
     GrabSingle();
     QImage image(m_pDispSingle, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-    QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+    QPixmap pixmap = QPixmap::fromImage(image);
     displayLabel->setPixmap(pixmap);
 }
 
@@ -244,7 +244,7 @@ void DisplayDlg::ShowDynamic()
     if (pCamera->RetrieveResult(tempBuffer)) {
         pCamera->ConvertBitmap(m_pDispBitmap, tempBuffer, DISPLAY_W, DISPLAY_H);
         QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-        QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+        QPixmap pixmap = QPixmap::fromImage(image);
         displayLabel->setPixmap(pixmap);
     }
     delete[] tempBuffer;
@@ -564,7 +564,7 @@ void DisplayDlg::ProcessImage(unsigned char* pBmp)
     case STATUS::Display:
     {
         QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-        QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+        QPixmap pixmap = QPixmap::fromImage(image);
         displayLabel->setPixmap(pixmap);
         m_DisplayAvg.Add(m_DisplayWatch.elapsed());
         m_DisplayWatch.restart();
