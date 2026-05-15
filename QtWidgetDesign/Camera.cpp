@@ -21,7 +21,7 @@ const int DISPLAY_H = 480;
 * 6. 打开的是USB连接的Basler相机
 */
 
-Camera* Camera::_pCamera = new Camera();
+Camera* Camera::_pCamera = nullptr;
 Camera::GarbageCollector Camera::gc;
 
 Camera::Camera()
@@ -370,10 +370,10 @@ void Camera::WriteConfig()
 bool Camera::Open()
 {
     // 测试摄像头是否能正常运行
-    Debug::get()->print(L"[Debug模式] 假装摄像头已打开，跳过真实硬件连接...");
-    return true;
+    // Debug::get()->print(L"[Debug模式] 假装摄像头已打开，跳过真实硬件连接...");
+    // return true;
     // 以下为正常注释
-    /*if (IsOpen())
+    if (IsOpen())
         Close();
     try
     {
@@ -416,8 +416,72 @@ bool Camera::Open()
         Debug::get()->print(L"摄像头打开失败...");
         Close();
         return false;
-    }*/
+    }
 }
+
+//bool Camera::Open()
+//{
+//    if (IsOpen())
+//        Close();
+//    try
+//    {
+//        // 枚举所有已连接的 Basler 设备
+//        Pylon::DeviceInfoList_t devices;
+//        CTlFactory::GetInstance().EnumerateDevices(devices);
+//        Debug::get()->print(QString("Pylon发现设备数量: %1").arg(devices.size()));
+//
+//        if (devices.empty()) {
+//            Debug::get()->print(L"未找到任何 Basler 相机设备，请检查连接和驱动");
+//            return false;
+//        }
+//
+//        // 用第一个找到的设备创建相机
+//        m_camera.Attach(CTlFactory::GetInstance().CreateFirstDevice(devices[0]));
+//
+//        m_camera.RegisterConfiguration(this, RegistrationMode_ReplaceAll, Cleanup_None);
+//        m_camera.Open();
+//        m_camera.MaxNumQueuedBuffer = 10;
+//        m_camera.MaxNumBuffer = 20;
+//        m_camera.OutputQueueSize = 10;
+//
+//        m_camera.Width = DISPLAY_W;
+//        m_camera.Height = DISPLAY_H;
+//        m_camera.OffsetX = 0;
+//        m_camera.OffsetY = 0;
+//
+//        m_camera.TriggerSelector = TriggerSelector_FrameStart;
+//        m_camera.TriggerMode = TriggerMode_Off;
+//        m_camera.TriggerSelector = TriggerSelector_FrameBurstStart;
+//        m_camera.TriggerMode = TriggerMode_Off;
+//        m_camera.AcquisitionMode = AcquisitionMode_Continuous;
+//        m_camera.ExposureMode = ExposureMode_Timed;
+//        m_camera.ExposureAuto = ExposureAuto_Off;
+//
+//        SetBlackLevel(m_nBlackLevel);
+//        SetGain(m_nGain);
+//        SetShutter(m_nShutter);
+//        SetGamma(m_nGamma);
+//        SetRed(m_nRed);
+//        SetGreen(m_nGreen);
+//        SetBlue(m_nBlue);
+//
+//        Debug::get()->print(L"摄像头已打开...");
+//        return true;
+//    }
+//    catch (const GenericException& e)
+//    {
+//        QString err = QString("摄像头打开失败: %1").arg(e.GetDescription());
+//        Debug::get()->print(err.toStdWString().c_str());
+//        Close();
+//        return false;
+//    }
+//    catch (...)
+//    {
+//        Debug::get()->print(L"摄像头打开失败（未知异常）...");
+//        Close();
+//        return false;
+//    }
+//}
 
 /**
 * @brief 开始相机图像抓取
@@ -474,12 +538,15 @@ bool Camera::RetrieveResult(void* ptrResult)
     try
     {
         CGrabResultPtr ptrGrabResult;
-        if (m_camera.RetrieveResult(300, ptrGrabResult, TimeoutHandling_Return))
-        {
-            if (ptrGrabResult->GrabSucceeded())
-            {
+        // 将 300 改为 1000 毫秒，多给点宽容度
+        if (m_camera.RetrieveResult(1000, ptrGrabResult, TimeoutHandling_Return)) {
+            if (ptrGrabResult->GrabSucceeded()) {
                 ConvertBitmap((unsigned char*)ptrResult, (unsigned char*)ptrGrabResult->GetBuffer(), DISPLAY_W, DISPLAY_H);
                 return true;
+            }
+            else {
+                // 如果抓图失败，打印出具体的底层错误（非常重要！）
+                Debug::get()->print(QString("抓图丢包或失败: %1").arg(ptrGrabResult->GetErrorDescription().c_str()).toStdWString().c_str());
             }
         }
         return false;

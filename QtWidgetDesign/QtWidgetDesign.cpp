@@ -149,8 +149,12 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
 
     // 3. 核心最后一步：调用基类提供的接口，让基类把它加到主界面布局中去
     this->setCentralWidget(centralWidget);
+
+    // 手动触发一次下标为0的槽函数，确保相机在软件启动时开始抓流
+    emit myTabWidget->currentChanged(0);
 }
 
 QtWidgetDesign::~QtWidgetDesign()
 {
+    Debug::get()->init(nullptr);
 }
