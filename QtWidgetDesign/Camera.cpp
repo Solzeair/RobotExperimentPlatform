@@ -611,7 +611,11 @@ bool Camera::GrabOne(void* ptrResult)
         {
             if (ptrGrabResult->GrabSucceeded())
             {
-                ConvertBitmap((unsigned char*)ptrResult, (unsigned char*)ptrGrabResult->GetBuffer(), DISPLAY_W, DISPLAY_H);
+                // 使用 Pylon 官方转换器，自动检测 Bayer 模式，避免红蓝对调
+                Pylon::CImageFormatConverter converter;
+                converter.OutputPixelFormat = Pylon::PixelType_RGB8packed;
+                converter.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
+                converter.Convert(ptrResult, DISPLAY_W * DISPLAY_H * 3, ptrGrabResult);
                 return true;
             }
         }

@@ -7,17 +7,12 @@
  * 1. 移除了重复的 Ground / GroundInfo 结构体定义。
  *    唯一的权威定义现在位于 utili.h。
  *
- * 2. 模板自动加载
- *    操作员选择的 25 个像素控制点与 4 个透视角点一起保存到
- *    "points_template.dat"。此后每次启动时，对话框检测到该文件后
- *    会自动跳过手动点击步骤。
- *
- * 3. 真正的多项式求解器
+ * 2. 真正的多项式求解器
  *    gmiv() 现在包含正确的最小二乘/SVD 实现
  *    （带部分主元的高斯消元法），因此标定计算
  *    实际上可以产生正确的坐标系数。
  *
- * 4. 透视校正
+ * 3. 透视校正
  *    在运行多项式拟合之前，使用四点透视变换
  *    （OpenCV getPerspectiveTransform + warpPerspective）
  *    将原始相机画面校正为俯视矩形。
@@ -80,6 +75,11 @@ public:
     // SelectSetStatus() 以及读写位图缓冲区。
     void setDisplayDlg(DisplayDlg* dlg);
 
+    // 检查是否有未保存的标定数据（用于退出时提示）
+    bool hasUnsavedData() const { return !m_isSaved; }
+    // 保存标定数据并返回是否成功
+    bool saveCalibration();
+
 private slots:
     // 按钮处理函数（UI 未变）
     void onButtonSet();         // 使用当前点运行标定
@@ -93,17 +93,8 @@ private slots:
 private:
     // ── UI ──────────────────────────────────────────────────────
     void initUI();
-    void paintEvent(QPaintEvent* event) override;
-
-    // ── 模板辅助函数 ────────────────────────────────────────────
-    // 将收集的 25 个像素点（以及可选的 4 个透视角点）
-    // 保存到 kPointsTemplateFile，以便重复使用。
-    bool saveTemplate() const;
-
-    // 从 kPointsTemplateFile 加载模板。
-    // 如果文件存在且有效，返回 true 并填充 m_points
-    //（以及可选的 m_perspectiveCorners）。
-    bool loadTemplate();
+    // paintEvent removed: result preview is now set via resultLabel->setPixmap()
+    // inside onButtonShowRes(), which is the correct Qt pattern for QLabel display.
 
     // ── 标定计算 ───────────────────────────────────────────────
     // 使用 25 个控制点对求解将像素坐标映射到场地坐标的
@@ -123,12 +114,9 @@ private:
     // 成功返回 true。
     bool applyPerspectiveCorrection();
 
-    // ── 启动时自动检测 ─────────────────────────────────────────
-    // 从 initUI() 调用。如果 kPointsTemplateFile 存在且有效，
-    // 则自动加载 25 个点，并提示操作员是否立即运行标定。
-    void tryAutoLoad();
-
 private:
+    // 状态指示条（红 = 未完成标定，绿 = 已完成）
+    QLabel* m_statusBar;
     // ── 布局/控件 ──────────────────────────────────────────────
     QVBoxLayout* mainLayout;
     QLabel* resultLabel;
@@ -144,7 +132,6 @@ private:
     // ── 状态 ───────────────────────────────────────────────────
     bool           m_isSaved;       // ground.dat 已写入
     bool           m_needResetDC;   // 结果预览需要刷新
-    bool           m_templateLoaded;// 有效的模板已自动加载
 
     // ── 数据 ────────────────────────────────────────────────────
     QVector<QPoint> m_points;            // 25 个像素控制点（已点击）

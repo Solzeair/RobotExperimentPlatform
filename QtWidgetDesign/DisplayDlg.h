@@ -11,7 +11,7 @@
 #include <QFile>
 #include <QIODevice>
 #include <vector>
-#include<algorithm>
+#include <algorithm>
 /*
 * DisplayDlg.h - 显示对话框头文件
 *
@@ -68,6 +68,9 @@ private:
     T m_Sum;
 };
 
+// RGB -> H 转换表（DisplayDlg.cpp 定义，供 ColorDlg 采样使用）
+extern int HLUT[256][256][256];
+
 // 常量定义
 #ifndef DISPLAY_W
 static const int DISPLAY_W = 640;
@@ -123,11 +126,20 @@ public:
 
     void ShowSingle();
 
+    // Add a calibration point marker drawn on top of the live image.
+    // Called by DemarcateDlg::PushPoint() so the operator sees where
+    // each click landed.  Markers persist until clearCalibPoints().
+    void addCalibPoint(const QPoint& pt) { m_calibPoints.push_back(pt); }
+
+    // Remove all calibration point markers (called on reset).
+    void clearCalibPoints() { m_calibPoints.clear(); }
+
     // Accessor for the single-grab pixel buffer.
     // Used by DemarcateDlg::applyPerspectiveCorrection() to read and
     // write back the camera frame before the polynomial fit is run.
     // Returns a pointer to the raw RGB24 buffer (DISPLAY_W * DISPLAY_H * 3 bytes).
     unsigned char* getDispSingle() { return m_pDispSingle; }
+    unsigned char* getDispBitmap() { return m_pDispBitmap; }
 
     // Register the DemarcateDlg so that BORDER_SET mouse clicks
     // are forwarded to DemarcateDlg::PushPoint().
@@ -150,6 +162,7 @@ public:
     int MINS(int R, int G, int B, int N);
     int GetMinValue(int val1, int val2, int val3, int val4);
     void RGBToHS(int m, int n, unsigned char* P, int& H, int& S, int& I);
+    void ClearBallTrail();
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -157,8 +170,8 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
 
 private slots:
-    void onTimer();
     void updateFPS();
+    void onTimer();           // 定时抓帧+处理循环（主线程）
 
 private:
     void initUI();
@@ -189,7 +202,6 @@ private:
     void DrawOpp(QPainter* painter);
     void DrawBall(QPainter* painter);
     void DrawRobot(QPainter* painter);
-    void ClearBallTrail(); // 清除足球轨迹
 
 private:
     // 图像
@@ -201,8 +213,12 @@ private:
     // When m_setStatus == BORDER_SET mouse clicks are forwarded here.
     class DemarcateDlg* m_pDemarcateDlg = nullptr;
 
-    // 线程
-    QTimer* m_grabTimer;
+    // Calibration point markers overlaid on the image.
+    // Populated by addCalibPoint(), cleared by clearCalibPoints().
+    std::vector<QPoint> m_calibPoints;
+
+    // 定时器
+    QTimer* m_grabTimer;     // 抓帧 + 处理定时器（主线程驱动）
     bool m_bErrorSign;
 
     // 状态
@@ -216,12 +232,12 @@ private:
     QImage m_groundImage;
     QPixmap m_carNumPixmap; // 车号图像（预加载）
 
-    // 足球轨迹
-    std::vector<QPoint> m_ballTrail;
-    static const int MAX_TRAIL_LENGTH = 50; // 轨迹最大长度
-
     // 目标识别
     bool ObjectFound[12];
+
+    // 球轨迹
+    static const int MAX_TRAIL_LENGTH = 100;
+    std::vector<QPoint> m_ballTrail;
 
     // 颜色选择区域
     QRect m_Rect;
@@ -265,4 +281,5 @@ private:
     // 界面控件
     QLabel* displayLabel;
     QVBoxLayout* mainLayout;
+
 };

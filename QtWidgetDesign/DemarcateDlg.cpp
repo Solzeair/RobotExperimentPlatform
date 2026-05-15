@@ -8,20 +8,12 @@
  *    替换了原来的空壳 gmiv()。
  *    原来的 gmiv() 将所有解系数设为 0，所以从未生成过标定数据。
  *
- * 2. 添加了模板保存/加载功能（saveTemplate / loadTemplate）。
- *    首次运行时，操作员点击 25 个点；这些像素被保存到
- *    "points_template.dat"。此后每次启动时，
- *    程序会检测到该文件并自动重新加载这些点，
- *    操作员只需确认而无需重新点击。
- *
- * 3. 添加了透视校正功能（applyPerspectiveCorrection）。
- *    如果操作员还提供了 4 个场地角点的像素坐标
- *    （作为模板中 25 个控制点之后的前 4 个条目存储，
- *    或者通过先点击 4 个角点再点击标定点的现有UI输入），
+ * 2. 添加了透视校正功能（applyPerspectiveCorrection）。
+ *    如果操作员还提供了 4 个场地角点的像素坐标，
  *    则在校值拟合之前，将原始相机画面变换为俯视矩形。
  *    这可以消除桶形/倾斜畸变，使映射更加准确。
  *
- * 4. 移除了与 utili.h 冲突的重复 Ground / GroundInfo 结构体定义
+ * 3. 移除了与 utili.h 冲突的重复 Ground / GroundInfo 结构体定义
  *    （flag 字段的 char vs bool 类型冲突）。
  *    utili.h 现在是唯一的权威定义。
  *
@@ -81,7 +73,6 @@ DemarcateDlg::DemarcateDlg(QWidget* parent)
     : QWidget(parent)
     , m_isSaved(true)
     , m_needResetDC(false)
-    , m_templateLoaded(false)
     , m_pDispDlg(nullptr)
 {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -103,7 +94,10 @@ DemarcateDlg::DemarcateDlg(QWidget* parent)
     point[12] = QPoint(0, 0);
 
     // ── 结果预览图像（黑色背景）────────────────────────────────
-    m_resultImage = QImage(350, 250, QImage::Format_RGB32);
+    // 尺寸与 onButtonShowRes() 中的俯视输出图像一致：
+    // 场地宽 250 cm × 2.4 px/cm + 20 px 边距 = 620 px
+    // 场地高 180 cm × 2.4 px/cm + 20 px 边距 = 452 px
+    m_resultImage = QImage(620, 452, QImage::Format_RGB32);
     m_resultImage.fill(Qt::black);
 
     initUI();
@@ -133,23 +127,26 @@ void DemarcateDlg::initUI()
     controlLayout->addWidget(titleLabel);
     controlLayout->setAlignment(titleLabel, Qt::AlignTop);
 
+    // 结果预览区域
+    // 最小尺寸足以容纳俯视图（620×452），允许随面板拉伸放大。
+    resultLabel = new QLabel(this);
+    resultLabel->setMinimumSize(560, 400);
+    resultLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    resultLabel->setAlignment(Qt::AlignCenter);
+    resultLabel->setStyleSheet("QLabel { background-color: black; border: 1px solid #555555; }");
+    controlLayout->addWidget(resultLabel, 0, Qt::AlignCenter);
+
     // 进度条
     progressBar = new QProgressBar(this);
     progressBar->setRange(0, DISPLAY_W);
     progressBar->setValue(0);
     controlLayout->addWidget(progressBar);
 
-    // 结果预览区域（白色背景）
-    resultLabel = new QLabel(this);
-    resultLabel->setFixedSize(340, 200);
-    resultLabel->setStyleSheet("QLabel { background-color: white; border: 1px solid black; }");
-    controlLayout->addWidget(resultLabel, 0, Qt::AlignCenter);
-
     // 绿色状态条
-    QLabel* greenBarLabel = new QLabel(this);
-    greenBarLabel->setStyleSheet("QLabel { background-color: #00FF00; border: 1px solid black; }");
-    greenBarLabel->setFixedHeight(20);
-    controlLayout->addWidget(greenBarLabel);
+    m_statusBar = new QLabel(this);
+    m_statusBar->setStyleSheet("QLabel { background-color: #FF0000; border: 1px solid black; }");  // 初始红色
+    m_statusBar->setFixedHeight(20);
+    controlLayout->addWidget(m_statusBar);
 
     // ── 按钮行 1 ─────────────────────────────────────────────
     QHBoxLayout* buttonRow1Layout = new QHBoxLayout();
@@ -193,6 +190,8 @@ void DemarcateDlg::initUI()
     controlLayout->addWidget(btnShowRes, 0, Qt::AlignCenter);
 
     mainLayout->addLayout(controlLayout);
+    mainLayout->addStretch();
+    mainLayout->setAlignment(Qt::AlignTop);
 
     // ── 初始按钮状态 ─────────────────────────────────────────
     btnSet->setEnabled(false);
@@ -207,24 +206,6 @@ void DemarcateDlg::initUI()
     connect(btnFlush, SIGNAL(clicked()), this, SLOT(onButtonFlush()));
     connect(btnShowRes, SIGNAL(clicked()), this, SLOT(onButtonShowRes()));
 
-    // ── 如果 ground.dat 已存在则自动加载 ───────────────────────
-    onButtonLoad();
-
-    // ── 尝试自动加载点模板 ────────────────────────────────────
-    tryAutoLoad();
-}
-
-// ═══════════════════════════════════════════════════════════════
-// 绘制事件 – 绘制结果预览图像
-// ═══════════════════════════════════════════════════════════════
-
-void DemarcateDlg::paintEvent(QPaintEvent* event)
-{
-    Q_UNUSED(event);
-    QPainter painter(this);
-    if (!m_resultImage.isNull()) {
-        painter.drawImage(resultLabel->geometry(), m_resultImage);
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -408,134 +389,6 @@ bool DemarcateDlg::applyPerspectiveCorrection()
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 模板保存 / 加载
-// ═══════════════════════════════════════════════════════════════
-
-// 将收集到的点保存到 kPointsTemplateFile。
-// 文件布局（二进制，QDataStream）：
-//   qint32  : 标定点数量（必须等于 CALIB_POINT_COUNT）
-//   qint32 × 2 × N : 每个标定点的 x, y
-//   qint32  : 透视角点数量（0 或 PERSPECTIVE_POINT_COUNT）
-//   qint32 × 2 × M : 每个角点的 x, y
-bool DemarcateDlg::saveTemplate() const
-{
-    QFile file(kPointsTemplateFile);
-    if (!file.open(QIODevice::WriteOnly)) {
-        return false;
-    }
-
-    QDataStream ds(&file);
-    ds.setVersion(QDataStream::Qt_5_0);
-
-    // 写入标定点
-    ds << static_cast<qint32>(m_points.size());
-    for (const QPoint& p : m_points) {
-        ds << static_cast<qint32>(p.x());
-        ds << static_cast<qint32>(p.y());
-    }
-
-    // 写入透视角点（可能为空）
-    ds << static_cast<qint32>(m_perspectiveCorners.size());
-    for (const QPoint& p : m_perspectiveCorners) {
-        ds << static_cast<qint32>(p.x());
-        ds << static_cast<qint32>(p.y());
-    }
-
-    file.close();
-    return true;
-}
-
-// 从 kPointsTemplateFile 加载模板。
-// 如果有效则返回 true 并填充 m_points / m_perspectiveCorners。
-bool DemarcateDlg::loadTemplate()
-{
-    QFile file(kPointsTemplateFile);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return false;   // 文件尚不存在 – 首次运行
-    }
-
-    QDataStream ds(&file);
-    ds.setVersion(QDataStream::Qt_5_0);
-
-    // 读取标定点
-    qint32 count = 0;
-    ds >> count;
-    if (count != CALIB_POINT_COUNT || ds.status() != QDataStream::Ok) {
-        file.close();
-        return false;   // 文件损坏或版本错误
-    }
-
-    QVector<QPoint> pts;
-    pts.reserve(count);
-    for (int i = 0; i < count; ++i) {
-        qint32 x = 0, y = 0;
-        ds >> x >> y;
-        pts.append(QPoint(x, y));
-    }
-
-    // 读取透视角点（可选 – 旧模板可能没有）
-    QVector<QPoint> corners;
-    if (!ds.atEnd()) {
-        qint32 ccount = 0;
-        ds >> ccount;
-        if (ccount == PERSPECTIVE_POINT_COUNT && ds.status() == QDataStream::Ok) {
-            corners.reserve(ccount);
-            for (int i = 0; i < ccount; ++i) {
-                qint32 x = 0, y = 0;
-                ds >> x >> y;
-                corners.append(QPoint(x, y));
-            }
-        }
-    }
-
-    file.close();
-
-    if (ds.status() != QDataStream::Ok) {
-        return false;
-    }
-
-    m_points = pts;
-    m_perspectiveCorners = corners;
-    return true;
-}
-
-// 从 initUI() 调用。检测并加载现有模板，
-// 以便操作员在后续运行时无需重新点击。
-void DemarcateDlg::tryAutoLoad()
-{
-    if (!loadTemplate()) {
-        // 未找到模板 – 正常的首次运行行为
-        Debug::get()->print(L"[Demarcate] No point template found. "
-            L"Please click 25 field points to calibrate.");
-        return;
-    }
-
-    m_templateLoaded = true;
-
-    // 立即启用标定按钮
-    btnSet->setEnabled(true);
-    btnResetOne->setEnabled(true);
-
-    Debug::get()->print(L"[Demarcate] Point template loaded automatically "
-        L"(25 points). Press '开始标定' to re-run calibration, "
-        L"or '重新标定' to re-select points.");
-
-    // 询问操作员是否立即运行标定
-    int ret = QMessageBox::question(
-        this,
-        "Auto-load",
-        "A saved calibration template was found.\n"
-        "Run calibration automatically with the saved points?\n"
-        "(Choose 'No' to manually re-select points first.)",
-        QMessageBox::Yes | QMessageBox::No,
-        QMessageBox::Yes);
-
-    if (ret == QMessageBox::Yes) {
-        onButtonSet();
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════
 // 按钮槽函数 – 运行标定
 // ═══════════════════════════════════════════════════════════════
 
@@ -670,13 +523,10 @@ void DemarcateDlg::onButtonSet()
         // 在扫描过程中保持 UI 响应
         QCoreApplication::processEvents();
     }
-
+    m_statusBar->setStyleSheet(
+        "QLabel { background-color: #00FF00; border: 1px solid black; }");
     m_needResetDC = true;
     onButtonShowRes();
-
-    QMessageBox::information(this, "Calibration Complete",
-        "Field calibration finished successfully.\n"
-        "Press '保存' to write ground.dat to disk.");
 
     btnSet->setEnabled(false);
     btnResetOne->setEnabled(false);
@@ -691,15 +541,19 @@ void DemarcateDlg::onButtonResetOne()
 {
     if (!m_points.isEmpty()) {
         m_points.pop_back();
-        btnSet->setEnabled(false);
+        // Keep the marker overlay in sync
+        if (m_pDispDlg) m_pDispDlg->clearCalibPoints();
+        for (const QPoint& p : m_points)
+            if (m_pDispDlg) m_pDispDlg->addCalibPoint(p);
 
+        btnSet->setEnabled(false);
         if (m_points.isEmpty()) {
             btnResetOne->setEnabled(false);
         }
     }
 
     if (m_pDispDlg) {
-        m_pDispDlg->ShowSingle();
+        m_pDispDlg->ShowSingle(); // redraws with updated marker list
     }
 
     Debug::get()->print(L"[Demarcate] Last point removed.");
@@ -712,18 +566,21 @@ void DemarcateDlg::onButtonResetOne()
 void DemarcateDlg::onButtonReset()
 {
     if (m_pDispDlg) {
+        m_pDispDlg->clearCalibPoints(); // remove all red cross markers
         m_pDispDlg->SelectSetStatus(DisplayDlg::SET_STATUS::BORDER_SET);
+        m_pDispDlg->ShowSingle();       // refresh display without markers
     }
 
     m_points.clear();
     m_perspectiveCorners.clear();
-    m_templateLoaded = false;
-
     progressBar->setValue(0);
+    m_statusBar->setStyleSheet(
+        "QLabel { background-color: #FF0000; border: 1px solid black; }");  // 重置为红色
     btnSet->setEnabled(false);
     btnResetOne->setEnabled(false);
 
     m_resultImage.fill(Qt::black);
+    resultLabel->setPixmap(QPixmap::fromImage(m_resultImage)); // clear preview
     update();
 
     Debug::get()->print(L"[Demarcate] Reset. Click 25 field points to recalibrate.");
@@ -750,6 +607,11 @@ void DemarcateDlg::onButtonLoad()
         file.close();
         m_needResetDC = true;
         m_isSaved = true;
+
+        // 更新状态条为绿色，表示标定数据已加载
+        m_statusBar->setStyleSheet(
+            "QLabel { background-color: #00FF00; border: 1px solid black; }");
+
         Debug::get()->print(L"[Demarcate] ground.dat loaded successfully.");
     }
     else {
@@ -760,10 +622,10 @@ void DemarcateDlg::onButtonLoad()
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 按钮槽函数 – 保存 ground.dat 和点模板
+// 按钮槽函数 – 保存 ground.dat
 // ═══════════════════════════════════════════════════════════════
 
-void DemarcateDlg::onButtonSave()
+bool DemarcateDlg::saveCalibration()
 {
     // ── 保存地面坐标表 ─────────────────────────────────────────
     QFile file(kGroundDataFile);
@@ -772,27 +634,21 @@ void DemarcateDlg::onButtonSave()
         file.close();
         m_isSaved = true;
         Debug::get()->print(L"[Demarcate] ground.dat saved.");
+        return true;
     }
     else {
         QMessageBox::warning(this, "Error",
             QString("Cannot write %1").arg(kGroundDataFile));
-        return;
+        return false;
     }
+}
 
-    // ── 保存点模板以便下次运行时自动加载 ─────────────────────
-    if (!m_points.isEmpty()) {
-        if (saveTemplate()) {
-            Debug::get()->print(L"[Demarcate] Point template saved "
-                L"(will auto-load on next launch).");
-        }
-        else {
-            Debug::get()->print(L"[Demarcate] Warning: could not save "
-                L"point template.");
-        }
+void DemarcateDlg::onButtonSave()
+{
+    if (saveCalibration()) {
+        QMessageBox::information(this, "Saved",
+            "Calibration data has been saved.");
     }
-
-    QMessageBox::information(this, "Saved",
-        "Calibration data and point template have been saved.");
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -812,43 +668,128 @@ void DemarcateDlg::onButtonFlush()
 
 void DemarcateDlg::onButtonShowRes()
 {
-    if (!m_needResetDC) {
-        update();
+    if (!m_needResetDC && !m_resultImage.isNull()) {
+        // 已是最新，只需刷新 pixmap（例如控件被重绘后）
+        resultLabel->setPixmap(QPixmap::fromImage(m_resultImage)
+            .scaled(resultLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
         return;
     }
 
-    // 重新渲染结果预览图像（黑色背景）
-    m_resultImage = QImage(350, 250, QImage::Format_RGB32);
+    // ════════════════════════════════════════════════════════════
+    // 输出图像坐标系（俯视场地坐标系）
+    //   场地 X：-15 ~ 235 cm（含左右边线延伸区，总宽 250 cm）
+    //   场地 Y：  0 ~ 180 cm（总高 180 cm）
+    //   缩放  ：2.4 px/cm；四周各留 10 px 边距
+    // ════════════════════════════════════════════════════════════
+    const double kPxPerCm = 2.4;
+    const int    kPadding = 10;
+    const int    kFieldXMin = -15;
+    const int    kFieldXMax = 235;
+    const int    kFieldYMin = 0;
+    const int    kFieldYMax = 180;
+    const int kImgW = static_cast<int>((kFieldXMax - kFieldXMin) * kPxPerCm) + 2 * kPadding;
+    const int kImgH = static_cast<int>((kFieldYMax - kFieldYMin) * kPxPerCm) + 2 * kPadding;
+
+    // 场地原点 (0 cm, 0 cm) 在输出图像中的像素偏移
+    const int kOffX = static_cast<int>(-kFieldXMin * kPxPerCm) + kPadding;
+    const int kOffY = kPadding;
+
+    unsigned char* pCam = m_pDispDlg ? m_pDispDlg->getDispBitmap() : nullptr;
+
+    m_resultImage = QImage(kImgW, kImgH, QImage::Format_RGB32);
     m_resultImage.fill(Qt::black);
 
-    QPainter painter(&m_resultImage);
 
-    // 将位于场地内的每个像素绘制为绿色
     progressBar->setValue(0);
-    for (int i = 0; i < DISPLAY_W; ++i) {
-        for (int j = 0; j < DISPLAY_H; ++j) {
-            if (ground.groundInfo[i][j].flag) {
-                // 将场地厘米坐标映射到预览图像像素
-                int px = static_cast<int>(ground.groundInfo[i][j].x + 60);
-                int py = static_cast<int>(ground.groundInfo[i][j].y + 40);
-                if (px >= 0 && px < 350 && py >= 0 && py < 250) {
-                    painter.setPen(QColor(0, 255, 0));
-                    painter.drawPoint(px, py);
-                }
+
+    if (pCam) {
+        // ════════════════════════════════════════════════════════
+        // 模式 A：摄像头图像重投影（前向映射）
+        //
+        // 对每个 flag=1 的摄像头像素 (i, j)：
+        //   - 读取 ground 表中对应的场地坐标 (fx, fy)（单位 cm）
+        //   - 将 (fx, fy) 映射为输出图像像素坐标
+        //   - 用 2×2 色块填充，减少前向映射留下的空洞
+        //
+        // 结果为俯视展开的真实摄像头纹理，直观反映标定质量。
+        // ════════════════════════════════════════════════════════
+        for (int i = 0; i < DISPLAY_W; ++i) {
+            for (int j = 0; j < DISPLAY_H; ++j) {
+                if (!ground.groundInfo[i][j].flag) continue;
+
+                float fx = ground.groundInfo[i][j].x;  // cm
+                float fy = ground.groundInfo[i][j].y;  // cm
+                int outX = static_cast<int>(fx * kPxPerCm) + kOffX;
+                int outY = static_cast<int>(fy * kPxPerCm) + kOffY;
+
+                if (outX < 0 || outX + 1 >= kImgW ||
+                    outY < 0 || outY + 1 >= kImgH)
+                    continue;
+
+                int srcIdx = (j * DISPLAY_W + i) * 3;
+                QRgb color = qRgb(pCam[srcIdx], pCam[srcIdx + 1], pCam[srcIdx + 2]);
+
+                // 2×2 色块填充，减少空洞
+                m_resultImage.setPixel(outX, outY, color);
+                m_resultImage.setPixel(outX + 1, outY, color);
+                m_resultImage.setPixel(outX, outY + 1, color);
+                m_resultImage.setPixel(outX + 1, outY + 1, color);
             }
+            progressBar->setValue(i);
+            QCoreApplication::processEvents();
         }
-        progressBar->setValue(i);
-        QCoreApplication::processEvents();
+    }
+    else {
+        // ════════════════════════════════════════════════════════
+        // 模式 B：无摄像头帧（后备显示）
+        // 将 flag=1 的像素绘制为绿点，展示有效标定区域
+        // ════════════════════════════════════════════════════════
+        QPainter painter(&m_resultImage);
+        painter.setPen(QColor(0, 200, 0));
+        for (int i = 0; i < DISPLAY_W; ++i) {
+            for (int j = 0; j < DISPLAY_H; ++j) {
+                if (!ground.groundInfo[i][j].flag) continue;
+                float fx = ground.groundInfo[i][j].x;
+                float fy = ground.groundInfo[i][j].y;
+                int outX = static_cast<int>(fx * kPxPerCm) + kOffX;
+                int outY = static_cast<int>(fy * kPxPerCm) + kOffY;
+                if (outX >= 0 && outX < kImgW && outY >= 0 && outY < kImgH)
+                    painter.drawPoint(outX, outY);
+            }
+            progressBar->setValue(i);
+            QCoreApplication::processEvents();
+        }
     }
 
-    // 用红色叠加场地边界多边形
-    QPolygon polygon;
-    for (int i = 0; i < 13; ++i) {
-        polygon << QPoint(point[i].x() + 60, point[i].y() + 40);
+    // ── 叠加场地边界多边形（白色，2 px 线宽）────────────────
+    {
+        QPainter painter(&m_resultImage);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(QPen(Qt::white, 2));
+        QPolygon polygon;
+        for (int k = 0; k < 13; ++k) {
+            polygon << QPoint(
+                static_cast<int>(point[k].x() * kPxPerCm) + kOffX,
+                static_cast<int>(point[k].y() * kPxPerCm) + kOffY);
+        }
+        painter.drawPolyline(polygon);
     }
-    painter.setPen(Qt::red);
-    painter.drawPolyline(polygon);
+
+    // ── 叠加 25 个标定控制点理论位置（黄色十字，6 px 臂长）─
+    {
+        QPainter painter(&m_resultImage);
+        painter.setPen(QPen(Qt::yellow, 1));
+        const int arm = 5;
+        for (int idx = 0; idx < CALIB_POINT_COUNT; ++idx) {
+            int cx = static_cast<int>(kBx[idx] * kPxPerCm) + kOffX;
+            int cy = static_cast<int>(kBy[idx] * kPxPerCm) + kOffY;
+            painter.drawLine(cx - arm, cy, cx + arm, cy);
+            painter.drawLine(cx, cy - arm, cx, cy + arm);
+        }
+    }
 
     m_needResetDC = false;
-    update();
+
+    resultLabel->setPixmap(QPixmap::fromImage(m_resultImage)
+        .scaled(resultLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }

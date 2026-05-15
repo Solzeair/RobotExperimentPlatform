@@ -189,22 +189,50 @@ void DisplayDlg::initUI()
     connect(fpsTimer, &QTimer::timeout, this, &DisplayDlg::updateFPS);
     fpsTimer->start(500); // 每500ms更新一次，与MFC版本保持一致
 
-    // 加载场地图像
+    // Load field image
     m_groundImage.load("resources/ground.bmp");
     if (m_groundImage.isNull()) {
-        // 如果图像加载失败，创建一个默认的绿色场地
         m_groundImage = QImage(DISPLAY_W, DISPLAY_H, QImage::Format_RGB32);
-        m_groundImage.fill(QColor(0, 128, 0)); // 绿色
+        m_groundImage.fill(QColor(0, 128, 0));
     }
+
+    // Show a grey placeholder so the display area is never blank on startup.
+    // Once the camera opens (ShowDynamic / ShowSingle) this will be replaced.
+    QPixmap placeholder(DISPLAY_W, DISPLAY_H);
+    placeholder.fill(QColor(80, 80, 80));
+    QPainter ph(&placeholder);
+    ph.setPen(Qt::white);
+    ph.setFont(QFont("Arial", 14));
+    ph.drawText(placeholder.rect(), Qt::AlignCenter, "Camera not started");
+    displayLabel->setPixmap(placeholder);
 }
 
-// 功能：从摄像头获取一帧图像并显示
-
+// Grab one frame, display it, and overlay any calibration point markers.
 void DisplayDlg::ShowSingle()
 {
     GrabSingle();
+
+    // Build display pixmap from the single-grab buffer
     QImage image(m_pDispSingle, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-    QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+    QPixmap pixmap = QPixmap::fromImage(image);
+
+    // Overlay calibration point markers (red cross, label)
+    if (!m_calibPoints.empty()) {
+        QPainter p(&pixmap);
+        p.setPen(QPen(Qt::red, 2));
+        QFont f;
+        f.setPointSize(8);
+        p.setFont(f);
+        for (int i = 0; i < (int)m_calibPoints.size(); ++i) {
+            const QPoint& pt = m_calibPoints[i];
+            // Cross arms ±6 px
+            p.drawLine(pt.x() - 6, pt.y(), pt.x() + 6, pt.y());
+            p.drawLine(pt.x(), pt.y() - 6, pt.x(), pt.y() + 6);
+            // Index label (1-based)
+            p.drawText(pt.x() + 4, pt.y() - 4, QString::number(i + 1));
+        }
+    }
+
     displayLabel->setPixmap(pixmap);
 }
 
@@ -244,13 +272,10 @@ void DisplayDlg::ShowDynamic()
     if (pCamera->RetrieveResult(tempBuffer)) {
         pCamera->ConvertBitmap(m_pDispBitmap, tempBuffer, DISPLAY_W, DISPLAY_H);
         QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-        QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+        QPixmap pixmap = QPixmap::fromImage(image);
         displayLabel->setPixmap(pixmap);
     }
     delete[] tempBuffer;
-
-    // 处理所有待处理事件，确保界面及时响应
-    QCoreApplication::processEvents();
 }
 
 /**
@@ -293,23 +318,24 @@ void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
     {
         for (j = 0; j < DISPLAY_H; j++)
             for (i = 0; i < DISPLAY_W; i++) {
-                R = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2);
+                // RGB 格式: byte 0=R, 1=G, 2=B（与 Pylon RGB8packed 一致）
+                R = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 0);
                 G = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1);
-                B = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 0);
+                B = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2);
                 H = 10 * HLUT[R][G][B];
                 S = int(100 * (1 - 3.0 * MIN(R, G, B, 3) / (R + G + B)));
                 I = int((R + G + B) / 3);
                 if (H >= HSI[object][0] && H <= HSI[object][1] && S >= HSI[object][2] && S <= HSI[object][3] && I >= HSI[object][4] && I <= HSI[object][5])
                 {
-                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2) = *(pOrigin + (i + (DISPLAY_H - j) * DISPLAY_W) * 3 + 2);
-                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1) = *(pOrigin + (i + (DISPLAY_H - j) * DISPLAY_W) * 3 + 1);
                     *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 0) = *(pOrigin + (i + (DISPLAY_H - j) * DISPLAY_W) * 3 + 0);
+                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1) = *(pOrigin + (i + (DISPLAY_H - j) * DISPLAY_W) * 3 + 1);
+                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2) = *(pOrigin + (i + (DISPLAY_H - j) * DISPLAY_W) * 3 + 2);
                 }
                 else
                 {
-                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2) = 255;
-                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1) = 255;
                     *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 0) = 255;
+                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1) = 255;
+                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2) = 255;
                 }
             }
     }
@@ -317,29 +343,30 @@ void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
     {
         for (j = 0; j < DISPLAY_H; j++)
             for (i = 0; i < DISPLAY_W; i++) {
-                R = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2);
+                // RGB 格式: byte 0=R, 1=G, 2=B（与 Pylon RGB8packed 一致）
+                R = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 0);
                 G = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1);
-                B = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 0);
+                B = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2);
                 H = 10 * HLUT[R][G][B];
                 S = int(100 * (1 - 3.0 * MIN(R, G, B, 3) / (R + G + B)));
                 I = int((R + G + B) / 3);
                 if (H >= HSI[object][0] || H <= HSI[object][1] && S >= HSI[object][2] && S <= HSI[object][3] && I >= HSI[object][4] && I <= HSI[object][5])
                 {
-                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2) = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2);
-                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1) = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1);
                     *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 0) = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 0);
+                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1) = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1);
+                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2) = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2);
                 }
                 else
                 {
-                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2) = 255;
-                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1) = 255;
                     *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 0) = 255;
+                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1) = 255;
+                    *(pTest + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2) = 255;
                 }
             }
     }
 
     QImage image(m_pTestBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-    QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+    QPixmap pixmap = QPixmap::fromImage(image);
     displayLabel->setPixmap(pixmap);
     delete m_pTestBitmap;
 }
@@ -348,10 +375,38 @@ void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
 
 void DisplayDlg::ShowRunTest(bool ImageSeg)
 {
+    // 确保停止之前的状态
+    Stop();
+
+    // 确保摄像头已打开并抓取
+    Camera* pCamera = Camera::GetInstance();
+    if (!pCamera->IsOpen()) {
+        if (!pCamera->Open()) {
+            displayLabel->setText("无法打开摄像头");
+            return;
+        }
+    }
+    if (!pCamera->IsGrabbing()) {
+        pCamera->StartGrabbing();
+    }
+
+    // 清空历史数据
+    for (int i = 0; i < MAX_ROBOT_NUM; i++) {
+        robotInfor[i].x = 0.0;    robotInfor[i].y = 0.0;    robotInfor[i].theta = 0.0;
+        robotBk[i]    = robotInfor[i];
+        OpprobotInfor[i].x = 0.0; OpprobotInfor[i].y = 0.0; OpprobotInfor[i].theta = 0.0;
+        OpprobotBk[i] = OpprobotInfor[i];
+        ObjectFound[i] = false;
+    }
+    ballInfor.x = 0.0;  ballInfor.y = 0.0;  ballInfor.theta = 0.0;
+    ballBk = ballInfor;
+
     if (ImageSeg)
         m_status = STATUS::RunTestSeg;
     else
         m_status = STATUS::RunTest;
+
+    m_DisplayWatch.start();
     m_grabTimer->start(33);
 }
 
@@ -433,8 +488,9 @@ void DisplayDlg::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
 
-    // 只在比赛相关状态下绘制足球场背景和机器人
-    if (m_status == STATUS::Game || m_status == STATUS::Prepare) {
+    // 足球场背景 + 识别叠加层：适用于比赛、预备、动态测试状态
+    if (m_status == STATUS::Game || m_status == STATUS::Prepare ||
+        m_status == STATUS::RunTest || m_status == STATUS::RunTestSeg) {
         QPixmap pixmap(DISPLAY_W, DISPLAY_H);
         pixmap.fill(Qt::transparent);
         QPainter painter(&pixmap);
@@ -468,14 +524,15 @@ void DisplayDlg::ClearBallTrail()
 
 void DisplayDlg::mouseMoveEvent(QMouseEvent* event)
 {
-    QPoint pos = event->pos();
     if (m_setStatus == SET_STATUS::COLOR_SET && (event->buttons() & Qt::LeftButton)) {
+        // 转换为 displayLabel 坐标（减去上方 fpsLabel 高度）
+        QPoint imgPos = event->pos() - QPoint(0, fpsLabel->height());
         QPainter painter(displayLabel);
         painter.setPen(QPen(Qt::red, 1));
         painter.setCompositionMode(QPainter::RasterOp_SourceXorDestination);
         painter.drawRect(m_Rect);
-        m_Rect.setRight(pos.x());
-        m_Rect.setBottom(pos.y());
+        m_Rect.setRight(imgPos.x());
+        m_Rect.setBottom(imgPos.y());
         painter.drawRect(m_Rect);
     }
 }
@@ -484,25 +541,52 @@ void DisplayDlg::mouseMoveEvent(QMouseEvent* event)
 
 void DisplayDlg::mousePressEvent(QMouseEvent* event)
 {
+    // event->pos() 是相对于 DisplayDlg 整体的坐标。
+    // 布局：fpsLabel（高 32px）在上，displayLabel（640×480）在下。
+    // 因此图像坐标 = 鼠标坐标 − fpsLabel 高度。
     QPoint pos = event->pos();
 
     if (m_setStatus == SET_STATUS::BORDER_SET) {
-        // Forward the click to the calibration dialog so it can
-        // collect the 25 field control points.
+        // ── 将 DisplayDlg 坐标转换为图像坐标 ─────────────────
+        QPoint imagePos(pos.x(), pos.y() - fpsLabel->height());
+
+        // 确保点击落在图像范围内，否则忽略
+        if (imagePos.x() < 0 || imagePos.x() >= DISPLAY_W ||
+            imagePos.y() < 0 || imagePos.y() >= DISPLAY_H)
+            return;
+
+        // 记录标记点（以图像坐标存储）
+        addCalibPoint(imagePos);
+
+        // 转发给 DemarcateDlg 记录坐标
         if (m_pDemarcateDlg) {
-            m_pDemarcateDlg->PushPoint(pos);
+            m_pDemarcateDlg->PushPoint(imagePos);
         }
-        // Draw a small red cross at the clicked position as visual feedback
-        QPainter painter(displayLabel);
-        painter.setPen(QPen(Qt::red, 2));
-        painter.drawLine(pos.x() - 5, pos.y(), pos.x() + 5, pos.y());
-        painter.drawLine(pos.x(), pos.y() - 5, pos.x(), pos.y() + 5);
+
+        // 用最近一帧重绘，叠加所有已标记的十字（位置已是图像坐标）
+        QImage image(m_pDispSingle, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
+        QPixmap pixmap = QPixmap::fromImage(image);
+        QPainter p(&pixmap);
+        p.setPen(QPen(Qt::red, 2));
+        QFont f;
+        f.setPointSize(8);
+        p.setFont(f);
+        for (int i = 0; i < (int)m_calibPoints.size(); ++i) {
+            const QPoint& pt = m_calibPoints[i];
+            p.drawLine(pt.x() - 6, pt.y(), pt.x() + 6, pt.y());
+            p.drawLine(pt.x(), pt.y() - 6, pt.x(), pt.y() + 6);
+            p.drawText(pt.x() + 4, pt.y() - 4, QString::number(i + 1));
+        }
+        displayLabel->setPixmap(pixmap);
+
     }
     else if (m_setStatus == SET_STATUS::COLOR_SET) {
-        m_Rect.setLeft(pos.x());
-        m_Rect.setTop(pos.y());
-        m_Rect.setRight(pos.x() + 1);
-        m_Rect.setBottom(pos.y() + 1);
+        // 转换为 displayLabel 坐标（减去上方 fpsLabel 高度 32px）
+        QPoint imgPos = pos - QPoint(0, fpsLabel->height());
+        m_Rect.setLeft(imgPos.x());
+        m_Rect.setTop(imgPos.y());
+        m_Rect.setRight(imgPos.x() + 1);
+        m_Rect.setBottom(imgPos.y() + 1);
         QPainter painter(displayLabel);
         painter.setPen(QPen(Qt::red, 1));
         painter.setCompositionMode(QPainter::RasterOp_SourceXorDestination);
@@ -564,7 +648,7 @@ void DisplayDlg::ProcessImage(unsigned char* pBmp)
     case STATUS::Display:
     {
         QImage image(m_pDispBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-        QPixmap pixmap = QPixmap::fromImage(image.rgbSwapped());
+        QPixmap pixmap = QPixmap::fromImage(image);
         displayLabel->setPixmap(pixmap);
         m_DisplayAvg.Add(m_DisplayWatch.elapsed());
         m_DisplayWatch.restart();
@@ -575,6 +659,7 @@ void DisplayDlg::ProcessImage(unsigned char* pBmp)
         this->StartTest();
         m_DisplayAvg.Add(m_DisplayWatch.elapsed());
         m_DisplayWatch.restart();
+        this->repaint();  // 触发 paintEvent 在场地背景上绘制识别结果
     }
     break;
     case STATUS::RunTestSeg:
@@ -582,6 +667,7 @@ void DisplayDlg::ProcessImage(unsigned char* pBmp)
         this->IdentifyTest();
         m_DisplayAvg.Add(m_DisplayWatch.elapsed());
         m_DisplayWatch.restart();
+        this->repaint();
     }
     break;
     case STATUS::Game:
@@ -596,21 +682,40 @@ void DisplayDlg::ProcessImage(unsigned char* pBmp)
     }
 }
 
-//功能：从摄像头获取一帧图像
+//功能：从摄像头获取一帧图像，使用与RetrieveResult一致的Pylon格式转换器
 
 bool DisplayDlg::GrabSingle()
 {
     Camera* pCamera = Camera::GetInstance();
-    if (pCamera->IsGrabbing()) {
-        this->Stop();
+
+    // If continuous grabbing is active, pause it briefly to use GrabOne.
+    bool wasGrabbing = pCamera->IsGrabbing();
+    if (wasGrabbing) {
+        pCamera->StopGrabbing();
     }
-    // 避免频繁开关摄像头，只在未打开时打开
+
     if (!pCamera->IsOpen()) {
         if (!pCamera->Open()) {
+            // Camera unavailable – leave m_pDispSingle as-is (grey placeholder)
+            if (wasGrabbing) pCamera->StartGrabbing();
             return false;
         }
     }
-    bool result = pCamera->GrabOne(m_pDispSingle);
+
+    // GrabOne uses ConvertBitmap internally; to stay consistent with
+    // RetrieveResult (which uses Pylon CImageFormatConverter → RGB8),
+    // we use StartGrabbing + RetrieveResult + StopGrabbing here too.
+    bool result = false;
+    if (pCamera->StartGrabbing()) {
+        result = pCamera->RetrieveResult(m_pDispSingle);
+        pCamera->StopGrabbing();
+    }
+
+    // Restore continuous grabbing if it was running before
+    if (wasGrabbing) {
+        pCamera->StartGrabbing();
+    }
+
     return result;
 }
 
@@ -655,9 +760,10 @@ void DisplayDlg::RGBToHS(int m, int n, unsigned char* P, int& H, int& S, int& I)
 {
     int R, G, B;
     int index = (n * m_ImageSize.width() + m) * 3;
-    R = *(P + index + 2);
+    // Pylon RGB8packed / QImage::Format_RGB888: byte order = R, G, B
+    R = *(P + index + 0);
     G = *(P + index + 1);
-    B = *(P + index + 0);
+    B = *(P + index + 2);
     H = 10 * HLUT[R][G][B];
     S = int(100 * (1 - 3.0 * MIN(R, G, B, 3) / (R + G + B)));
     I = (int)(R + G + B) / 3;
@@ -997,11 +1103,25 @@ bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin,
     }
 }
 
-//功能：启动目标识别
+//功能：启动目标识别（球 + 己方机器人 + 对手）
 
 void DisplayDlg::StartTest()
 {
-    IdentifyAll();
+    // 清空上一帧的识别结果
+    for (int i = 0; i < MAX_ROBOT_NUM; i++) {
+        robotInfor[i].found = false;
+        OpprobotInfor[i].found = false;
+        ObjectFound[i] = false;
+    }
+    ballInfor.found = false;
+    ObjectFound[10] = false;
+    ObjectFound[11] = false;
+
+    IdentifyAll();        // 识别球（阈值 0 = 我方队色）
+    IdentiRobo(1);        // 识别己方机器人 MEMB1（阈值 1）
+    IdentiRobo(2);        // 识别己方机器人 MEMB2 / 对手（阈值 2）
+    IdentiRobo(4);        // 识别对手（阈值 4 = 敌方队色）
+    BallPosFilter();      // 球位置滤波防抖
 }
 
 //功能：识别足球和机器人
@@ -1109,11 +1229,8 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
     int xLeftTem, xRightTem, yTopTem, yBottomTem;
     int robotNum = 0;
 
-    for (i = 0; i < MAX_ROBOT_NUM; i++)
-    {
-        robotInfor[i].found = false;
-        OpprobotInfor[i].found = false;
-    }
+    // 注意：不再清空 robotInfor / OpprobotInfor
+    // 由 StartTest() 统一清空，避免多次调用互相覆盖
 
     unsigned char* m_pTestBitmap = new unsigned char[m * n * 3];
     memcpy(m_pTestBitmap, m_pDispBitmap, m * n * 3);
@@ -1146,8 +1263,9 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
                     int x = (m_xLeft + m_xRight) / 2;
                     int y = (m_yTop + m_yBottom) / 2;
 
-                    if (ObjectCount == 1)
+                    if (ObjectCount == 1 || ObjectCount == 2)
                     {
+                        // MEMB1 / MEMB2 → 己方机器人
                         if (robotNum < MAX_ROBOT_NUM)
                         {
                             robotInfor[robotNum].x = (double)(x - 45) / 2.5;
@@ -1159,9 +1277,10 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
                             robotNum++;
                         }
                     }
-                    else if (ObjectCount == 2)
+                    else if (ObjectCount == 4)
                     {
-                        if (m_IdenOp && robotNum < MAX_ROBOT_NUM)
+                        // 敌方队色 → 对手
+                        if (robotNum < MAX_ROBOT_NUM)
                         {
                             OpprobotInfor[robotNum].x = (double)(x - 45) / 2.5;
                             OpprobotInfor[robotNum].y = (double)(y - 15) / 2.5;

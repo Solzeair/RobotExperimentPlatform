@@ -52,20 +52,5 @@ typedef struct tagGround {//场地参数结构体，用于记录场地的各种�
 
 inline constexpr const char* kGroundDataFile = "ground.dat";
 
-// 操作员在首次标定时选择的 25 个像素空间控制点。
-// 后续运行时自动加载，无需操作员重新点击。
-
-inline constexpr const char* kPointsTemplateFile = "points_template.dat";
-
-// ---------------------------------------------------------------
-
 // 透视校正 – 4 个角点控制点
-
-// 当操作员点击"保存"时由 DemarcateDlg 写入，
-// 由 DisplayDlg::applyPerspectiveCorrection() 读取。
-
-// ---------------------------------------------------------------
-
-//（无需额外的结构体；4 个 QPoint 嵌入在
-//  points_template.dat 中，作为前 4 个条目
-//  通过 DemarcateDlg::saveTemplate() 保存 – 参见 DemarcateDlg.cpp）
+//  由 DisplayDlg::applyPerspectiveCorrection() 读取。

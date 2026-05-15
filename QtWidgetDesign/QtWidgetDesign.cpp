@@ -8,6 +8,7 @@
 #include "Debug.h"
 #include <QTextEdit>
 #include <QPushButton>
+#include <memory>
 
 QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     : CFrameLessWidgetBase(parent)
@@ -77,6 +78,7 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     demarcateDlg->setDisplayDlg(displayDlg);  // Give Demarcate access to the display
     displayDlg->setDemarcateDlg(demarcateDlg); // Give Display access to Demarcate (for click forwarding)
     myTabWidget->addTab(demarcateDlg, "Demarcate");   // 标定
+    m_pDemarcateDlg = demarcateDlg;  // 保存指针，用于退出时检查未保存数据
 
     ColorDlg* colorDlg = new ColorDlg(myTabWidget);
     myTabWidget->addTab(colorDlg, "Color");       // 采色
@@ -85,8 +87,12 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     matchDlg->setDisplayDlg(displayDlg);  // 设置DisplayDlg指针
     myTabWidget->addTab(matchDlg, "competition"); // 比赛
 
-    // 连接标签页切换信号
+    // 连接标签页切换信号（防重入守卫）
+    auto tabSwitching = std::make_shared<bool>(false);
     connect(myTabWidget, &QTabWidget::currentChanged, [=](int index) {
+        if (*tabSwitching) return;
+        *tabSwitching = true;
+
         // 先停止所有定时器，避免冲突
         displayDlg->Stop();
 
@@ -108,10 +114,9 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
             displayDlg->ShowInitGame();
             break;
         }
-        // 强制立即更新显示区域，减少切换延迟
         displayDlg->update();
-        // 处理所有待处理事件，确保界面响应
-        QCoreApplication::processEvents();
+
+        *tabSwitching = false;
         });
 
     // 将标签页添加到主布局
@@ -157,4 +162,36 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
 QtWidgetDesign::~QtWidgetDesign()
 {
     Debug::get()->init(nullptr);
+}
+
+void QtWidgetDesign::closeEvent(QCloseEvent* event)
+{
+    // 检查标定页面是否有未保存的数据
+    if (m_pDemarcateDlg && m_pDemarcateDlg->hasUnsavedData()) {
+        QMessageBox::StandardButton ret = QMessageBox::question(
+            this,
+            "提示",
+            "标定数据尚未保存，是否保存？",
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
+            QMessageBox::Save);
+
+        if (ret == QMessageBox::Save) {
+            // 保存标定数据
+            m_pDemarcateDlg->saveCalibration();
+            // 保存后继续执行基类关闭事件
+            CFrameLessWidgetBase::closeEvent(event);
+        }
+        else if (ret == QMessageBox::Discard) {
+            // 不保存，继续关闭
+            CFrameLessWidgetBase::closeEvent(event);
+        }
+        else {
+            // Cancel：取消关闭
+            event->ignore();
+        }
+    }
+    else {
+        // 没有未保存数据，正常执行基类关闭事件
+        CFrameLessWidgetBase::closeEvent(event);
+    }
 }
