@@ -1,4 +1,4 @@
-/*
+﻿/*
 * 调车对话框源文件
 * 写作人 李青
 * 功能 调车面板的构建与基础交互响应，含车体位置标识显示、指令下发遥测操作等功能模块实现。
@@ -9,7 +9,7 @@
 #include <QCloseEvent>
 
 // 定义USE_USB340宏，使用真实的设备函数
-// #define USE_USB340
+#define USE_USB340
 
 // 尝试包含USB340HID61_DEF.h，如果失败则使用模拟函数
 #ifdef USE_USB340

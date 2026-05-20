@@ -79,6 +79,7 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="$(QtMsBuild)\Qt.props" />
+    <Import Project="qtdesign_debug_x64.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -130,7 +131,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(ProjectDir)USB340HID61.lib;F:\Opencv412\opencv\build\x64\vc16\lib\opencv_world4120d.lib;PylonBase_v11.lib;GCBase_MD_VC142_v3_5_Basler_pylon_v1.lib;GenApi_MD_VC142_v3_5_Basler_pylon_v1.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(ProjectDir)hid.lib;F:\Opencv412\opencv\build\x64\vc16\lib\opencv_world4120d.lib;PylonBase_v11.lib;GCBase_MD_VC142_v3_5_Basler_pylon_v1.lib;GenApi_MD_VC142_v3_5_Basler_pylon_v1.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>F:\Opencv412\opencv\build\x64\vc16\lib;F:\Basler\Development\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
