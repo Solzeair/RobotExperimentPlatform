@@ -61,13 +61,8 @@
     <QtModules>core;gui;widgets</QtModules>
     <QtBuildConfig>release</QtBuildConfig>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'" Label="QtSettings">
-    <QtInstall>qt6.10.1</QtInstall>
-    <QtModules>core;gui;widgets</QtModules>
-    <QtBuildConfig>debug</QtBuildConfig>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'" Label="QtSettings">
-    <QtInstall>qt6.10.1</QtInstall>
+    <QtInstall>6.10.1_msvc2022_64</QtInstall>
     <QtModules>core;gui;widgets</QtModules>
     <QtBuildConfig>release</QtBuildConfig>
   </PropertyGroup>
@@ -87,13 +82,23 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
-    <IncludePath>F:\Opencv412\opencv\build\include;F:\Basler\Development\include;$(IncludePath)</IncludePath>
-    <LibraryPath>F:\Opencv412\opencv\build\x64\vc16\lib;$(LibraryPath)</LibraryPath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
-    <IncludePath>E:\download\opencv\build\include;$(IncludePath)</IncludePath>
+    <IncludePath>E:\download\opencv\build\include;D:\SoftA\Pylon\Development\include;$(IncludePath)</IncludePath>
     <LibraryPath>E:\download\opencv\build\x64\vc16\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <IncludePath>E:\download\opencv\build\include;D:\SoftA\Pylon\Development\include;$(IncludePath)</IncludePath>
+    <LibraryPath>E:\download\opencv\build\x64\vc16\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|Win32'" Label="Configuration">
     <ClCompile>
       <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
@@ -126,13 +131,13 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>F:\Opencv412\opencv\build\include;F:\Basler\Development\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\download\opencv\build\include;D:\SoftA\Pylon\Development\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(ProjectDir)hid.lib;F:\Opencv412\opencv\build\x64\vc16\lib\opencv_world4120d.lib;PylonBase_v11.lib;GCBase_MD_VC142_v3_5_Basler_pylon_v1.lib;GenApi_MD_VC142_v3_5_Basler_pylon_v1.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>F:\Opencv412\opencv\build\x64\vc16\lib;F:\Basler\Development\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>E:\download\opencv\build\x64\vc16\lib\opencv_world4110d.lib;PylonBase_v11.lib;GCBase_MD_VC142_v3_5_Basler_pylon_v1.lib;GenApi_MD_VC142_v3_5_Basler_pylon_v1.lib;USB340HID61.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>E:\download\opencv\build\x64\vc16\lib;D:\SoftA\Pylon\Development\lib\x64;$(ProjectDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'" Label="Configuration">
@@ -141,13 +146,13 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DebugInformationFormat>None</DebugInformationFormat>
       <Optimization>MaxSpeed</Optimization>
-      <AdditionalIncludeDirectories>E:\download\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\download\opencv\build\include;D:\SoftA\Pylon\Development\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>false</GenerateDebugInformation>
-      <AdditionalDependencies>E:\download\opencv\build\x64\vc16\lib\opencv_world4110.lib;$(ProjectDir)USB340HID61.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>E:\download\opencv\build\x64\vc16\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>E:\download\opencv\build\x64\vc16\lib\opencv_world4110d.lib;PylonBase_v11.lib;GCBase_MD_VC142_v3_5_Basler_pylon_v1.lib;GenApi_MD_VC142_v3_5_Basler_pylon_v1.lib;$(ProjectDir)USB340HID61.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>E:\download\opencv\build\x64\vc16\lib;D:\SoftA\Pylon\Development\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -171,12 +176,14 @@
     <ClCompile Include="DisplayDlg.cpp" />
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="Debug.cpp" />
+    <ClCompile Include="USB340ProxyClient.cpp" />
   </ItemGroup>
   <ItemGroup>
     <QtMoc Include="CFrameLessWidgetBase.h" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="PluginManager.h" />
+    <ClInclude Include="USB340ProxyClient.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Condition="Exists('$(QtMsBuild)\qt.targets')">

@@ -6,71 +6,8 @@
 */
 #include "RobotDlg.h"
 #include "Debug.h"
+#include "USB340ProxyClient.h"
 #include <QCloseEvent>
-
-// 定义USE_USB340宏，使用真实的设备函数
-#define USE_USB340
-
-// 尝试包含USB340HID61_DEF.h，如果失败则使用模拟函数
-#ifdef USE_USB340
-#include "USB340HID61_DEF.h"
-#else
-// 模拟USB340设备初始化
-bool InitUSB340()
-{
-    Debug::get()->print(L"模拟初始化USB340设备");
-    return true;
-}
-
-// 模拟检测设备是否存在
-bool CheckIfExist()
-{
-    Debug::get()->print(L"模拟检测设备是否存在");
-    return true; // 假设设备存在
-}
-
-// 模拟设置频率
-bool SetFre(int fre, bool op)
-{
-    Debug::get()->print(L"模拟设置频率");
-    return true;
-}
-
-// 模拟修改车频率
-bool ChangeCarFre(unsigned char CarNum, int NewCarFre, bool ChangeCarFreOp)
-{
-    Debug::get()->print(L"模拟修改车频率");
-    return true;
-}
-
-// 模拟修改车号
-bool ChangeCarNum(unsigned char OldNum, unsigned char NewNum)
-{
-    Debug::get()->print(L"模拟修改车号");
-    return true;
-}
-
-// 模拟组装车的速度
-bool BuildCarSpeed(unsigned char CarNum, int Left, int Right)
-{
-    Debug::get()->print(L"模拟组装车的速度");
-    return true;
-}
-
-// 模拟发送所有车的速度
-bool SendAll(int num)
-{
-    Debug::get()->print(L"模拟发送所有车的速度");
-    return true;
-}
-
-// 模拟发送单辆车的速度
-bool SendOneCar(int num)
-{
-    Debug::get()->print(L"模拟发送单辆车的速度");
-    return true;
-}
-#endif
 
 // 使用450频率
 #define USE_FRE_450
@@ -83,16 +20,19 @@ RobotDlg::RobotDlg(QWidget *parent)
     , m_carFre(true)
     , m_selectedFreq(450)
 {
-    // 初始化USB340设备
-    InitUSB340();
+    // 初始化USB340代理客户端
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
+    if (!proxy->init()) {
+        Debug::get()->print(L"USB340代理初始化失败");
+    }
     
     // 设置初始频率
 #ifdef USE_FRE_450 
     m_carFre = true;
-    SetFre(450, false);
+    proxy->setFre(450, false);
 #else
     m_carFre = false;
-    SetFre(460, false);
+    proxy->setFre(460, false);
 #endif
     
     // 设置大小策略为可伸缩
@@ -310,85 +250,94 @@ void RobotDlg::initUI()
 
 void RobotDlg::onButtonFront()
 {
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_oldNum = editOldNum->text().toInt();
-    BuildCarSpeed(m_oldNum, speed, speed);
+    proxy->buildCarSpeed(m_oldNum, speed, speed, 100);
     if (m_oldNum == 0)
-        SendAll(11);
+        proxy->sendAll(11);
     else
-        SendOneCar(m_oldNum);
+        proxy->sendOneCar(m_oldNum);
     Debug::get()->print(L"发送前进命令");
 }
 
 void RobotDlg::onButtonBack()
 {
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_oldNum = editOldNum->text().toInt();
-    BuildCarSpeed(m_oldNum, -speed, -speed);
+    proxy->buildCarSpeed(m_oldNum, -speed, -speed, 100);
     if (m_oldNum == 0)
-        SendAll(11);
+        proxy->sendAll(11);
     else
-        SendOneCar(m_oldNum);
+        proxy->sendOneCar(m_oldNum);
     Debug::get()->print(L"发送后退命令");
 }
-
 void RobotDlg::onButtonLeft()
 {
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_oldNum = editOldNum->text().toInt();
-    BuildCarSpeed(m_oldNum, -speed, speed);
+    proxy->buildCarSpeed(m_oldNum, -speed, speed, 100);
     if (m_oldNum == 0)
-        SendAll(11);
+        proxy->sendAll(11);
     else
-        SendOneCar(m_oldNum);
+        proxy->sendOneCar(m_oldNum);
     Debug::get()->print(L"发送左转命令");
 }
 
 void RobotDlg::onButtonRight()
 {
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_oldNum = editOldNum->text().toInt();
-    BuildCarSpeed(m_oldNum, speed, -speed);
+    proxy->buildCarSpeed(m_oldNum, speed, -speed, 100);
     if (m_oldNum == 0)
-        SendAll(11);
+        proxy->sendAll(11);
     else
-        SendOneCar(m_oldNum);
+        proxy->sendOneCar(m_oldNum);
     Debug::get()->print(L"发送右转命令");
 }
 
 void RobotDlg::onButtonStop()
 {
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_oldNum = editOldNum->text().toInt();
-    BuildCarSpeed(m_oldNum, 0, 0);
+    proxy->buildCarSpeed(m_oldNum, 0, 0, 100);
     if (m_oldNum == 0)
-        SendAll(11);
+        proxy->sendAll(11);
     else
-        SendOneCar(m_oldNum);
+        proxy->sendOneCar(m_oldNum);
     Debug::get()->print(L"发送停止命令");
 }
 
 void RobotDlg::onButtonChangeNum()
 {
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_oldNum = editOldNum->text().toInt();
     m_newNum = editNewNum->text().toInt();
-    ChangeCarNum(m_oldNum, m_newNum);
+    Debug::get()->print(QString("改车号: %1 -> %2").arg(m_oldNum).arg(m_newNum));
+    bool success = proxy->changeCarNum(m_oldNum, m_newNum);
+    if (!success) {
+        Debug::get()->print(QString("改车号命令发送失败"));
+    }
     // 交换编号显示
     editOldNum->setText(QString::number(m_newNum));
     editNewNum->setText(QString::number(m_oldNum));
     // 交换变量值
     std::swap(m_oldNum, m_newNum);
-    Debug::get()->print(L"发送更改编号命令");
 }
 
 void RobotDlg::onButtonChangeFreq()
 {
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_numSet = editNum->text().toInt();
     m_carFre = radio1_450->isChecked();
-    InitUSB340();
+    proxy->init();
     if (m_carFre)
     {
-        ChangeCarFre(m_numSet, 450, true);
+        proxy->changeCarFre(m_numSet, true);
         Debug::get()->print(L"发送更改频率为450的命令");
     }
     else
     {
-        ChangeCarFre(m_numSet, 460, true);
+        proxy->changeCarFre(m_numSet, false);
         Debug::get()->print(L"发送更改频率为460的命令");
     }
 }
@@ -421,16 +370,17 @@ void RobotDlg::onButton460()
 
 void RobotDlg::onButtonConfirmFreq()
 {
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     if (m_selectedFreq == 450)
     {
-        SetFre(450, false);
+        proxy->setFre(450, false);
         m_carFre = true;
         editDeviceStatus->setText("450");
         Debug::get()->print(L"发射器频率已确认为 450");
     }
     else if (m_selectedFreq == 460)
     {
-        SetFre(460, false);
+        proxy->setFre(460, false);
         m_carFre = false;
         editDeviceStatus->setText("460");
         Debug::get()->print(L"发射器频率已确认为 460");
@@ -439,7 +389,8 @@ void RobotDlg::onButtonConfirmFreq()
 
 void RobotDlg::onTimer()
 {
-    if (CheckIfExist())
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
+    if (proxy->checkIfExist())
     {
         editDeviceStatus->setText("设备已连接");
     }
