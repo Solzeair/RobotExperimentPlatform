@@ -202,10 +202,22 @@ void DisplayDlg::initUI()
 
 void DisplayDlg::ShowSingle()
 {
-    GrabSingle();
-    QImage image(m_pDispSingle, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-    QPixmap pixmap = QPixmap::fromImage(image);
-    displayLabel->setPixmap(pixmap);
+    Camera* pCamera = Camera::GetInstance();
+
+    // 确保摄像头已打开且在抓取
+    if (!pCamera->IsOpen()) {
+        pCamera->Open();
+    }
+    if (!pCamera->IsGrabbing()) {
+        pCamera->StartGrabbing();
+    }
+
+    // 直接从流中抓取当前帧
+    if (pCamera->RetrieveResult(m_pDispSingle)) {
+        QImage image(m_pDispSingle, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
+        QPixmap pixmap = QPixmap::fromImage(image);
+        displayLabel->setPixmap(pixmap);
+    }
 }
 
 //功能：启动定时器，持续从摄像头获取图像并显示

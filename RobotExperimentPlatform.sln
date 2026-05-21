@@ -1,20 +1,36 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.36908.2 d17.14
+VisualStudioVersion = 17.14.36908.2
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "QtWidgetDesign", "QtWidgetDesign\QtWidgetDesign.vcxproj", "{D4DD4149-3511-411E-89BF-596B2A551F43}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "USB340Proxy", "USB340Proxy\USB340Proxy.vcxproj", "{22151C50-022A-4C6A-86B1-5B85234FB4DB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
 		Debug|x64 = Debug|x64
+		Release|Win32 = Release|Win32
 		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D4DD4149-3511-411E-89BF-596B2A551F43}.Debug|Win32.ActiveCfg = Debug|x64
+		{D4DD4149-3511-411E-89BF-596B2A551F43}.Debug|Win32.Build.0 = Debug|x64
 		{D4DD4149-3511-411E-89BF-596B2A551F43}.Debug|x64.ActiveCfg = Debug|x64
 		{D4DD4149-3511-411E-89BF-596B2A551F43}.Debug|x64.Build.0 = Debug|x64
+		{D4DD4149-3511-411E-89BF-596B2A551F43}.Release|Win32.ActiveCfg = Release|x64
+		{D4DD4149-3511-411E-89BF-596B2A551F43}.Release|Win32.Build.0 = Release|x64
 		{D4DD4149-3511-411E-89BF-596B2A551F43}.Release|x64.ActiveCfg = Release|x64
 		{D4DD4149-3511-411E-89BF-596B2A551F43}.Release|x64.Build.0 = Release|x64
+		{22151C50-022A-4C6A-86B1-5B85234FB4DB}.Debug|Win32.ActiveCfg = Debug|Win32
+		{22151C50-022A-4C6A-86B1-5B85234FB4DB}.Debug|Win32.Build.0 = Debug|Win32
+		{22151C50-022A-4C6A-86B1-5B85234FB4DB}.Debug|x64.ActiveCfg = Debug|Win32
+		{22151C50-022A-4C6A-86B1-5B85234FB4DB}.Debug|x64.Build.0 = Debug|Win32
+		{22151C50-022A-4C6A-86B1-5B85234FB4DB}.Release|Win32.ActiveCfg = Release|x64
+		{22151C50-022A-4C6A-86B1-5B85234FB4DB}.Release|Win32.Build.0 = Release|x64
+		{22151C50-022A-4C6A-86B1-5B85234FB4DB}.Release|x64.ActiveCfg = Release|x64
+		{22151C50-022A-4C6A-86B1-5B85234FB4DB}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

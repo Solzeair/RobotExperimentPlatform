@@ -79,6 +79,9 @@
     <ClCompile Include="PluginManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="USB340ProxyClient.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <QtMoc Include="CFrameLessWidgetBase.h">
@@ -93,6 +96,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="PluginManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="USB340ProxyClient.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
