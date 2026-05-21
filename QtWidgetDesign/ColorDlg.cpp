@@ -1,4 +1,4 @@
-﻿#include "ColorDlg.h"
+#include "ColorDlg.h"
 #include "Debug.h"
 #include "DisplayDlg.h"   // Needed for ShowColorTest / ShowRunTest / ShowSingle
 
@@ -289,7 +289,8 @@ void ColorDlg::initUI()
     connect(scrollBarSMin, SIGNAL(valueChanged(int)), this, SLOT(onScrollBarChanged()));
     connect(scrollBarIMin, SIGNAL(valueChanged(int)), this, SLOT(onScrollBarChanged()));
 
-
+    // 添加弹性空间，使内容在垂直方向上自适应
+    mainLayout->addStretch();
 }
 
 

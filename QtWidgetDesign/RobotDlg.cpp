@@ -1,4 +1,4 @@
-﻿/*
+/*
 * 调车对话框源文件
 * 写作人 李青
 * 功能 调车面板的构建与基础交互响应，含车体位置标识显示、指令下发遥测操作等功能模块实现。
@@ -50,22 +50,12 @@ void RobotDlg::initUI()
     QFont font("楷体", 12, QFont::Bold);
     setFont(font);
     
-    // 创建主布局
+    // 创建主布局（与其他界面保持一致）
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(20, 0, 20, 20);
     mainLayout->setSpacing(15);
     
-    // 创建顶部布局（左侧显示区域 + 右侧控制区域）
-    QHBoxLayout *topLayout = new QHBoxLayout();
-    topLayout->setSpacing(15);
-    
-    // 左侧显示区域
-    QLabel *displayLabel = new QLabel(this);
-    displayLabel->setStyleSheet("QLabel { background-color: white; border: 1px solid black; }");
-    displayLabel->setFont(font);
-    displayLabel->setFixedSize(640, 480);
-    
-    // 右侧控制区域
+    // 创建控制区域（与其他界面保持一致）
     QVBoxLayout *controlLayout = new QVBoxLayout();
     // 设置控件之间间隔为12像素，让内容排列更松散
     controlLayout->setSpacing(12);
@@ -218,8 +208,8 @@ void RobotDlg::initUI()
 
     controlLayout->addWidget(deviceGroup);
 
-    topLayout->addLayout(controlLayout);
-    mainLayout->addLayout(topLayout);
+    // 将控制区域添加到主布局（与其他界面保持一致）
+    mainLayout->addLayout(controlLayout);
 
     // 初始化定时器
     timer = new QTimer(this);
@@ -246,6 +236,9 @@ void RobotDlg::initUI()
         btn450->setChecked(true);
     else
         btn460->setChecked(true);
+
+    // 添加弹性空间，使内容在垂直方向上自适应
+    mainLayout->addStretch();
 }
 
 void RobotDlg::onButtonFront()

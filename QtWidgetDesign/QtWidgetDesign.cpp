@@ -1,4 +1,4 @@
-﻿#include "QtWidgetDesign.h"
+#include "QtWidgetDesign.h"
 #include "CameraDlg.h"
 #include "RobotDlg.h"
 #include "DemarcateDlg.h"
@@ -32,18 +32,40 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
 
     // 创建主布局
     QHBoxLayout* mainLayout = new QHBoxLayout();
+    mainLayout->setSpacing(10);  // 左侧显示区和右侧标签页之间的间距
 
-    // 左侧显示区域 - 与MFC版本保持一致
+    // 左侧显示区域 - 与MFC版本保持一致，固定大小不随窗口变化
     DisplayDlg* displayDlg = new DisplayDlg(this);
     displayDlg->setFixedSize(640, 512);  // 480显示区域 + 32帧率标签（与右侧标签栏高度一致）
 
-    // 创建垂直布局，使DisplayDlg在垂直方向上偏上
+    // 创建垂直布局，包含显示区域和调试信息区域
     QVBoxLayout* leftLayout = new QVBoxLayout();
-    // 移除顶部的stretch，减少顶部空白
-    leftLayout->addWidget(displayDlg);
-    leftLayout->addStretch(2);  // 底部空白（较大比例）
+    leftLayout->setSpacing(10);  // 显示区域和调试区域之间的间距
+    leftLayout->addWidget(displayDlg);  // 顶部放置显示区域（固定大小）
+    
+    // 调试信息区域 - 可伸缩以填满剩余空间
+    QTextEdit* debugText = new QTextEdit(this);
+    debugText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);  // 调试区域自适应
+    debugText->setMinimumHeight(80);  // 设置最小高度
+    debugText->setReadOnly(true);
+    debugText->setStyleSheet("font-family: Consolas; font-size: 10pt;");
+    leftLayout->addWidget(debugText);  // 添加调试信息区域
+    
+    // 清除按钮布局
+    QHBoxLayout* debugButtonLayout = new QHBoxLayout();
+    debugButtonLayout->addStretch();  // 左侧添加弹性空间
+    QPushButton* cleanDebugButton = new QPushButton("Clean", this);
+    cleanDebugButton->setFixedSize(80, 30);
+    debugButtonLayout->addWidget(cleanDebugButton);  // 右对齐
+    leftLayout->addLayout(debugButtonLayout);  // 添加清除按钮布局
 
-    mainLayout->addLayout(leftLayout);
+    // 连接清除按钮信号
+    connect(cleanDebugButton, &QPushButton::clicked, [=]() {
+        Debug::get()->clean();
+    });
+
+    // 将左侧布局添加到主布局（不设置stretch，让左侧保持紧凑）
+    mainLayout->addLayout(leftLayout, 0);  // stretch因子为0，不拉伸左侧区域
 
     // 右侧标签页控件
     QTabWidget* myTabWidget = new QTabWidget(this);
@@ -116,38 +138,16 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
         QCoreApplication::processEvents();
         });
 
-    // 将标签页添加到主布局
-    mainLayout->addWidget(myTabWidget);
+    // 将标签页添加到主布局（stretch因子为1，让右侧标签页占据剩余空间）
+    mainLayout->addWidget(myTabWidget, 1);
 
-    // 创建调试信息文本框
-    QTextEdit* debugText = new QTextEdit(this);
-    debugText->setFixedSize(640, 100);
-    debugText->setReadOnly(true);
-    debugText->setStyleSheet("font-family: Consolas; font-size: 10pt;");
-
-    // 创建清除调试信息按钮
-    QPushButton* cleanDebugButton = new QPushButton("Clean", this);
-    cleanDebugButton->setFixedSize(80, 30);
-
-    // 连接清除按钮信号
-    connect(cleanDebugButton, &QPushButton::clicked, [=]() {
-        Debug::get()->clean();
-        });
-
-    // 创建调试信息布局
-    QVBoxLayout* debugLayout = new QVBoxLayout();
-    debugLayout->addWidget(debugText);
-    debugLayout->addWidget(cleanDebugButton, 0, Qt::AlignRight);
-
-    // 将调试布局添加到左侧布局
-    leftLayout->addLayout(debugLayout);
-
-    // 初始化Debug类
+    // 初始化Debug类（debugText已在前面创建）
     Debug::get()->init(debugText);
 
     // 创建一个中心部件来容纳主布局
     QWidget* centralWidget = new QWidget();
     centralWidget->setLayout(mainLayout);
+    centralWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);  // 中央部件自适应
 
     // 3. 核心最后一步：调用基类提供的接口，让基类把它加到主界面布局中去
     this->setCentralWidget(centralWidget);

@@ -337,6 +337,9 @@ void CameraDlg::initUI()
     btnSaveCamera->setFont(font);
     mainLayout->addWidget(btnSaveCamera, 0, Qt::AlignCenter);
     
+    // 添加弹性空间，使内容在垂直方向上自适应
+    mainLayout->addStretch();
+    
     // 连接信号槽
     connect(sliderBlackLevel, SIGNAL(valueChanged(int)), this, SLOT(onSliderBlackLevelChanged(int)));
     connect(sliderGain, SIGNAL(valueChanged(int)), this, SLOT(onSliderGainChanged(int)));
