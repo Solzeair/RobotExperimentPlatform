@@ -1,6 +1,6 @@
 <FlowDocument xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" FontFamily="Segoe UI" FontSize="12">
   <FlowDocument.Tag><![CDATA[{
-  "timestamp": "2026-04-09 13:58:22",
+  "timestamp": "2026-05-15 18:09:56",
   "files": {
     "C:\\Users\\2dou\\Desktop\\TestRobotStrategy\\TestRobotStrategy.vcxproj": {
       "before": "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",
@@ -9,6 +9,10 @@
     "C:\\Users\\2dou\\Desktop\\TestRobotStrategy\\TestRobotStrategy.vcxproj.filters": {
       "before": "5VZdb5swFO3jNGn/AfFuvhNgJqkCgS5vk6a9TZqIuQlUGDPbVJGm/ZP+2DlNG0jR1ijbHqoh/ICx773nHO4x92+urqLrHa21O+CiYs1Mtw1L16AhrKia7Uzv5AYF+vX83dvoI2e3QKSmljdippdStu9NU5ASaC4MWhHOBNtIgzBqFnAHNWuBm1Ssu6ouTMeyXF2F0bRoJYHecNa1D49qIqtqCVxbNaTuCpjpN9AAzyUUmnoD4rBNU1f0uam+dbAqoJHVpgI+/+7b6TJQN1okcYi8JA1RHKc2Si0rdi3b81Lb/hGZo437Sh5CpjsJzR67mJO2xQST3Q5TRnCJC9hgVtS4UoODwJE5WHwIEJmH4v8DKB8gL5RKL0sSumE4cQMLBWG8RN7a8lAQpDGaOpMsTidOGmfxuZKUuFSilEqSkuKqUVo0BO9EcYEUr73+T6zjBM7g38sS3/UzGyX+YoI815+ihTWdImfhOkt/4iycLDuX/74lhs1Qtrd4nUucC7ofuwvUeMVoIvPUwcaGltQJo63yrt7TaF41hmJzYGaPzjFk4rmdmMdITwZznOhDtznPKSgHLaq8Zts/znIGvk5IRuO9sf+6jHIMddiCY6h90MM5cQnNBay77Rdl31/PYuXZSTOu6UnI39DPoYZcwL9M2jPT0z1AykE1pzBKg6zlmPQXMfbRjyj7qT7hCc6/m/L0i4vMx1+N+U8=",
       "after": "5VXLbtswEMyphwL9B0F3mnrZkkrZgSVLqQ8FWhT9AJlcRwxEUhWpQEDR3+r3lbbT2K0RxEhPQQnxQHI52tnBDn++ubrKrkfROvfQa67k3PUnnuuApIpxeTt3B7NFiXu9ePc2+9SrO6DGseFSz93GmO49xpo2IGo9EZz2SqutmVAlMIN7aFUHPRZ6M/CW4cDzQtfCOE62NiBuejV0+6XdqHhroHfWkrYDg7l7AxL62gBz7AnowzXHjuyr5N8GWDOQhm859IvvsV+uEvuhZZGnKCrKFOV56aPS8/LQ86Oo9P0fGT67uMtkD1mOBuSOu17QriOU0HEkQlHSEAZbolhLuJ09aJLhk+ADQIYPyf8HVD5AzaxKz0uShmk6DRMPJWm+QtHGi1CSlDmaBdMqL6dBmVf5pZI0pLGiNFaSRhAurRaSklGzF0jx2vP/ooaewgX1j6oiDuPKR0W8nKIojGdo6c1mKFiGwSqeBsugqi6t/7ElTpuh6e7Ipjak1mI3xxeo8YrZZPhPBzs3tKItlOisdx09TdRcTmw1T8zswTlOK/G3neBHpN8G87hxhO7qvhZgHZTxulW3//yX5/l9Nh8VfTqB5pzkafOdkdzDHd6GJ0vrYBuQ4YdHaPEL"
+    },
+    "C:\\Users\\2dou\\Desktop\\TestRobotStrategy\\TestRobotStrategy.vcxproj.user": {
+      "before": "tZFNS8NAEIaLR8H/sCyFtAez8QMRSVKkohcPrS3e8zFJVnYzYXe2VuiPd5OSQ9GjHvfZmXeeYfjZZBIv9lqxHRgrsU34VRhxBm2BpWzrhDuqLu/5Ir04j1cGP6AgtkVU9n2sXzpjoCXOfEprE94QdQ9C2KIBndlQy8KgxYrCArUoYQcKOzBC29xJVYrrKLrhPp2xPt//0NeLQdcNyMNNg5+PSj1LBTYl4yAWJ2joFD9bT9PYa5aDSviaNkDkF7OcLbEtJQ07B9OZf1Wydibryfwwna1URhUaPQ+SJHiC3NWH/d1tcHT1YmvaoiuacfLoK37j8b8LvoGCzMJfKg7S/cHTbw==",
+      "after": "vZFNT8MwDIYnjkhcOUfRpG4HlvIhhFDbCQ3BhcPGJu79cNugJK4SZwxpP560aIfBFXH0Y/v1a/v8ZDRK5jut2Bask2hSfjmLOQNTYiVNk3JP9cUdn2dnp8nS4juUxDaIyr0d6hfeWjDEWVAxLuUtUXcvhCtb0LmbaVladFjTrEQtKtiCwg6s0K7wUlXiKo6veVBnrNcPGfp8tui7AQW4bvHjQaknqcBlZD0k4ggNneJ367Eae8kLUClf0RqIwmKOswWaStKwczSehKiWjbd5T6b78WSpcqrR6mmUptEjFL7Z725vom+vwdiKNujL9jA5S8RP8j/WXkFB7uBvzCX9JfsnZ18="
     }
   }
 }]]></FlowDocument.Tag>
@@ -21,7 +25,7 @@
       <Span TextDecorations="Underline">Project Format Conversion</Span>
     </Paragraph>
     <Paragraph Margin="12,8" FontSize="18">
-      <Span>Report generated on 2026-04-09 13:58:22</Span>
+      <Span>Report generated on 2026-05-15 18:09:56</Span>
     </Paragraph>
   </Section>
   <Section>
@@ -56,6 +60,22 @@
                         [Diff before/current]
                     </Hyperlink>
       <Hyperlink NavigateUri="file://C:\Users\2dou\Desktop\TestRobotStrategy\TestRobotStrategy.vcxproj.filters?diff&amp;after&amp;current">
+                        [Diff after/current]
+                    </Hyperlink>
+      <LineBreak />
+    </Paragraph>
+    <Paragraph Margin="24,12,0,0">
+      <Span FontFamily="Consolas" FontSize="14" Background="WhiteSmoke"><![CDATA[C:\Users\2dou\Desktop\TestRobotStrategy\TestRobotStrategy.vcxproj.user]]></Span>
+      <LineBreak />
+      <Hyperlink NavigateUri="file://C:\Users\2dou\Desktop\TestRobotStrategy\TestRobotStrategy.vcxproj.user?before">[Before]</Hyperlink>
+      <Hyperlink NavigateUri="file://C:\Users\2dou\Desktop\TestRobotStrategy\TestRobotStrategy.vcxproj.user?after">[After]</Hyperlink>
+      <Hyperlink NavigateUri="file://C:\Users\2dou\Desktop\TestRobotStrategy\TestRobotStrategy.vcxproj.user?diff&amp;before&amp;after">
+                        [Diff before/after]
+                    </Hyperlink>
+      <Hyperlink NavigateUri="file://C:\Users\2dou\Desktop\TestRobotStrategy\TestRobotStrategy.vcxproj.user?diff&amp;before&amp;current">
+                        [Diff before/current]
+                    </Hyperlink>
+      <Hyperlink NavigateUri="file://C:\Users\2dou\Desktop\TestRobotStrategy\TestRobotStrategy.vcxproj.user?diff&amp;after&amp;current">
                         [Diff after/current]
                     </Hyperlink>
       <LineBreak />
@@ -2104,4 +2124,4 @@
     <Paragraph />
   </Section>
 </FlowDocument>
-<!--D25jhQY3BsxJsCnzCh+OB6eDYJAyocZeNcMgrXJw7FM=-->
+<!--9G2jRWJe4goLE48ojlKsxPwfIP1obC27MTYMupvUL44=-->

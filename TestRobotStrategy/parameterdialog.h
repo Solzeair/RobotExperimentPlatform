@@ -1,6 +1,6 @@
 #ifndef PARAMETERDIALOG_H
 #define PARAMETERDIALOG_H
-
+#include <QTextEdit>
 #include <QDialog>
 #include <QTableWidget>
 #include <QPushButton>
@@ -32,6 +32,7 @@ private slots:
     void onRefreshClicked();
     void onSpinBoxChanged(double value);
     void updateDisplay();
+    void onDelayedUpdate();
 
 private:
     struct Parameter {

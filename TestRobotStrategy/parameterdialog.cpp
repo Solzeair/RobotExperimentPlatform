@@ -83,7 +83,7 @@ void ParameterDialog::setupUI() {
     // ==================== 参数表格 ====================
     m_table = new QTableWidget();
     m_table->setColumnCount(6);  // 6列：参数名、当前值、最小值、最大值、步长、描述
-    m_table->setHorizontalHeaderLabels({"参数名", "当前值", "最小值", "最大值", "步长", "描述"});
+    m_table->setHorizontalHeaderLabels({ "参数名", "当前值", "最小值", "最大值", "步长", "描述" });
     m_table->horizontalHeader()->setStretchLastSection(true);  // 最后一列自动拉伸
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);  // 整行选中
     mainLayout->addWidget(m_table);
@@ -163,7 +163,7 @@ void ParameterDialog::loadParameters() {
     m_parameters.push_back(Parameter("avoid_distance", 25.0, 15.0, 40.0, 1.0, "避障距离 (cm)"));
     m_parameters.push_back(Parameter("avoid_weight", 1.5, 0.5, 3.0, 0.1, "避障权重"));
 
-  
+
 }
 
 /**
@@ -245,6 +245,7 @@ void ParameterDialog::updateTable() {
     m_table->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
 }
 
+void ParameterDialog::onDelayedUpdate() {}
 /**
  * SpinBox值变化处理
  * 更新内部参数存储
@@ -286,7 +287,7 @@ void ParameterDialog::updateDisplay() {
 void ParameterDialog::onSaveClicked() {
     // 弹出文件保存对话框
     QString filename = QFileDialog::getSaveFileName(this, "保存参数配置", "",
-                                                    "参数文件 (*.txt);;所有文件 (*)");
+        "参数文件 (*.txt);;所有文件 (*)");
     if (!filename.isEmpty()) {
         QFile file(filename);
         if (file.open(QIODevice::WriteOnly)) {
@@ -298,12 +299,13 @@ void ParameterDialog::onSaveClicked() {
             // 写入所有参数
             for (const auto& param : m_parameters) {
                 stream << QString::fromStdString(param.name) << " = " << param.value
-                       << "  # " << QString::fromStdString(param.description) << "\n";
+                    << "  # " << QString::fromStdString(param.description) << "\n";
             }
 
             file.close();
             QMessageBox::information(this, "成功", "参数已保存到 " + filename);
-        } else {
+        }
+        else {
             QMessageBox::warning(this, "错误", "无法保存文件");
         }
     }
@@ -316,7 +318,7 @@ void ParameterDialog::onSaveClicked() {
 void ParameterDialog::onLoadClicked() {
     // 弹出文件打开对话框
     QString filename = QFileDialog::getOpenFileName(this, "加载参数配置", "",
-                                                    "参数文件 (*.txt);;所有文件 (*)");
+        "参数文件 (*.txt);;所有文件 (*)");
     if (!filename.isEmpty()) {
         QFile file(filename);
         if (file.open(QIODevice::ReadOnly)) {
@@ -357,7 +359,8 @@ void ParameterDialog::onLoadClicked() {
             // 刷新表格显示
             updateTable();
             QMessageBox::information(this, "成功", "参数已从 " + filename + " 加载");
-        } else {
+        }
+        else {
             QMessageBox::warning(this, "错误", "无法加载文件");
         }
     }

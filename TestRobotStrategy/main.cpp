@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
     QLibrary lib("RobotStrategyDll.dll");
 
     if (!lib.load()) {
-        std::cerr << "Failed to load DLL: " << lib.errorString().toStdString() << std::endl;
+        std::cerr << "Failed to load DLL: " << lib.errorString().toLocal8Bit().constData() << std::endl;
         return -1;
     }
 
