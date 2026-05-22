@@ -9,7 +9,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "USB340Proxy", "USB340Proxy\
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RobotStrategyDll", "RobotStrategyDll\RobotStrategyDll.vcxproj", "{6C79CE72-D1A5-3301-B0EE-8A7118EDBE37}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestRobotStrategy", "TestRobotStrategy\TestRobotStrategy.vcxproj", "{3A7512B9-2178-3027-BBA8-283908B3A939}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ParameterDialog", "ParameterDialog\ParameterDialog.vcxproj", "{4B359B54-1410-4A08-BCAB-EFD66A9222AA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -43,14 +43,14 @@ Global
 		{6C79CE72-D1A5-3301-B0EE-8A7118EDBE37}.Release|Win32.Build.0 = Release|x64
 		{6C79CE72-D1A5-3301-B0EE-8A7118EDBE37}.Release|x64.ActiveCfg = Release|x64
 		{6C79CE72-D1A5-3301-B0EE-8A7118EDBE37}.Release|x64.Build.0 = Release|x64
-		{3A7512B9-2178-3027-BBA8-283908B3A939}.Debug|Win32.ActiveCfg = Debug|x64
-		{3A7512B9-2178-3027-BBA8-283908B3A939}.Debug|Win32.Build.0 = Debug|x64
-		{3A7512B9-2178-3027-BBA8-283908B3A939}.Debug|x64.ActiveCfg = Debug|x64
-		{3A7512B9-2178-3027-BBA8-283908B3A939}.Debug|x64.Build.0 = Debug|x64
-		{3A7512B9-2178-3027-BBA8-283908B3A939}.Release|Win32.ActiveCfg = Release|x64
-		{3A7512B9-2178-3027-BBA8-283908B3A939}.Release|Win32.Build.0 = Release|x64
-		{3A7512B9-2178-3027-BBA8-283908B3A939}.Release|x64.ActiveCfg = Release|x64
-		{3A7512B9-2178-3027-BBA8-283908B3A939}.Release|x64.Build.0 = Release|x64
+		{4B359B54-1410-4A08-BCAB-EFD66A9222AA}.Debug|Win32.ActiveCfg = Debug|x64
+		{4B359B54-1410-4A08-BCAB-EFD66A9222AA}.Debug|Win32.Build.0 = Debug|x64
+		{4B359B54-1410-4A08-BCAB-EFD66A9222AA}.Debug|x64.ActiveCfg = Debug|x64
+		{4B359B54-1410-4A08-BCAB-EFD66A9222AA}.Debug|x64.Build.0 = Debug|x64
+		{4B359B54-1410-4A08-BCAB-EFD66A9222AA}.Release|Win32.ActiveCfg = Release|x64
+		{4B359B54-1410-4A08-BCAB-EFD66A9222AA}.Release|Win32.Build.0 = Release|x64
+		{4B359B54-1410-4A08-BCAB-EFD66A9222AA}.Release|x64.ActiveCfg = Release|x64
+		{4B359B54-1410-4A08-BCAB-EFD66A9222AA}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
