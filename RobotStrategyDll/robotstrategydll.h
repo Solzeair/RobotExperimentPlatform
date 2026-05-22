@@ -1,8 +1,9 @@
-// robotstrategydll.h
+﻿// robotstrategydll.h
 #ifndef ROBOTSTRATEGYDLL_H
 #define ROBOTSTRATEGYDLL_H
 
 #include "robotstrategydll_global.h"
+
 #include "StrategyCore.h"  // 添加这个，包含 RobotPose, Point, BallInfo, WheelVelocity
 
 #ifdef __cplusplus
@@ -25,6 +26,11 @@ extern "C" {
 
 // 比赛状态控制
     ROBOTSTRATEGYDLL_EXPORT void SetMatchState(void* strategy, int state);
+    // ==================== 新增接口（用于比赛界面完整控制）====================
+
+// 开球方式设置
+// type: 0=普通, 1=点球, 2=门球, 3=任意球, 4=争球, 5=收车
+    ROBOTSTRATEGYDLL_EXPORT void SetKickoffType(void* strategy, int type);
 
     // 阵型选择（单双后卫）
     ROBOTSTRATEGYDLL_EXPORT void SetFormationType(void* strategy, int isSingleDefender);

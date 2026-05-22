@@ -377,10 +377,18 @@ bool Camera::Open()
         Close();
     try
     {
-        ITransportLayer *pTl = CTlFactory::GetInstance().CreateTl(BaslerUsbDeviceClass);
+        // 枚举所有已连接的 Basler 设备
+        Pylon::DeviceInfoList_t devices;
+        CTlFactory::GetInstance().EnumerateDevices(devices);
+        Debug::get()->print(QString("Pylon发现设备数量: %1").arg(devices.size()));
 
-        m_camera.Attach(pTl->CreateFirstDevice(), Cleanup_Delete);
-        CTlFactory::GetInstance().ReleaseTl(pTl);
+        if (devices.empty()) {
+            Debug::get()->print(L"未找到任何 Basler 相机设备，请检查连接和驱动");
+            return false;
+        }
+
+        // 用第一个找到的设备创建相机
+        m_camera.Attach(CTlFactory::GetInstance().CreateDevice(devices[0]));
         m_camera.RegisterConfiguration(this, RegistrationMode_ReplaceAll, Cleanup_None);
         m_camera.Open();
         m_camera.MaxNumQueuedBuffer = 10;

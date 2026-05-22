@@ -1,4 +1,4 @@
-/*
+﻿/*
 * 5v5比赛对话框源文件
 * 写作人 李青
 * 功能 5v5比赛控制界面逻辑实现，包含开球类型、阵型布置、点球及战术选择功能响应。
@@ -10,8 +10,14 @@
 #include "PluginManager.h"
 #include <QMessageBox>
 #include <QDebug>
+#include <QLibrary> 
+#include <QFile>         
+#include <QThread>
+#include <QCoreApplication>
+#include <algorithm>  // 用于 std::max, std::min
+#include "USB340ProxyClient.h" 
 
-MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
+MatchDlg_5vs5::MatchDlg_5vs5(QWidget* parent)
     : QWidget(parent)
     , m_attack(0)
     , m_BallLost(true)
@@ -43,17 +49,85 @@ MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     initUI();
-    // 通过插件管理器从指定路径加载策略插件
-    PluginManager* pluginManager = PluginManager::getInstance();
-    QString dllPath = QString("e:/bishe/策略/RobotStrategyDll.dll");
-    pluginManager->loadPlugin(dllPath, PluginType::STRATEGY);
-    m_strategyPlugin = dynamic_cast<StrategyPluginInterface*>(pluginManager->getPlugin(PluginType::STRATEGY));
-    
+
+    // ========== 直接加载策略 DLL ==========
+    QString dllPath = "C:/Users/2dou/source/repos/STRATEGY/x64/Debug/RobotStrategyDll.dll";
+
+    if (!QFile::exists(dllPath)) {
+        Debug::get()->print("策略DLL不存在: " + dllPath);
+        QMessageBox::warning(this, "错误", "策略DLL不存在\n" + dllPath);
+        btnStartMatch->setEnabled(false);
+        return;
+    }
+
+    Debug::get()->print("尝试加载: " + dllPath);
+
+    QLibrary lib(dllPath);
+    if (!lib.load()) {
+        Debug::get()->print("加载 DLL 失败: " + lib.errorString());
+        btnStartMatch->setEnabled(false);
+        return;
+    }
+
+    // 解析函数指针
+    CreateStrategyFunc createStrategy = (CreateStrategyFunc)lib.resolve("CreateStrategy");
+    InitializeStrategyFunc initStrategy = (InitializeStrategyFunc)lib.resolve("InitializeStrategy");
+    SetFormationTypeFunc setFormation = (SetFormationTypeFunc)lib.resolve("SetFormationType");
+    SetOurGoalOnRightFunc setOurGoalOnRight = (SetOurGoalOnRightFunc)lib.resolve("setOurGoalOnRight");
+    SetOurKickoffFunc setOurKickoff = (SetOurKickoffFunc)lib.resolve("setOurKickoff");
+    SetPenaltyKickModeFunc setPenaltyKickMode = (SetPenaltyKickModeFunc)lib.resolve("SetPenaltyKickMode");
+    SelectStrategyFunc selectStrategy = (SelectStrategyFunc)lib.resolve("SelectStrategy");
+    SetParameterFunc setParameter = (SetParameterFunc)lib.resolve("setParameter");
+    ParkRobotsFunc parkRobots = (ParkRobotsFunc)lib.resolve("ParkRobots");
+    SetKickoffTypeFunc setKickoffType = (SetKickoffTypeFunc)lib.resolve("SetKickoffType");
+    DecideFunc decide = (DecideFunc)lib.resolve("decide");
+
+    m_decide = decide;
+
+    if (!createStrategy || !initStrategy) {
+        Debug::get()->print("解析函数失败");
+        btnStartMatch->setEnabled(false);
+        return;
+    }
+
+    // 创建策略实例
+    m_strategyHandle = createStrategy();
+    if (!m_strategyHandle) {
+        Debug::get()->print("创建策略实例失败");
+        btnStartMatch->setEnabled(false);
+        return;
+    }
+
+    // 保存函数指针
+    m_initStrategy = initStrategy;
+    m_setFormation = setFormation;
+    m_setOurGoalOnRight = setOurGoalOnRight;
+    m_setOurKickoff = setOurKickoff;
+    m_setPenaltyKickMode = setPenaltyKickMode;
+    m_selectStrategy = selectStrategy;
+    m_setParameter = setParameter;
+    m_parkRobots = parkRobots;
+    m_setKickoffType = setKickoffType;
+
+    // 初始化策略
+    m_initStrategy(m_strategyHandle, 0);
+
+    Debug::get()->print("策略加载成功！");
+    // ========== 初始化策略执行定时器 ==========
+    m_strategyTimer = new QTimer(this);
+    connect(m_strategyTimer, &QTimer::timeout, this, &MatchDlg_5vs5::onStrategyTimer);
+    // 注意：定时器在开始比赛后才启动，不在构造函数中 start
+
+    // 帧率显示定时器（可选）
+    m_fpsTimer = new QTimer(this);
+    connect(m_fpsTimer, &QTimer::timeout, this, &MatchDlg_5vs5::onUpdateFPS);
+    m_fpsTimer->start(500);  // 每500ms更新一次帧率显示
+
+    m_hasValidData = false;
+
     // 初始状态：禁用开始比赛按钮
     btnStartMatch->setEnabled(false);
-}
-
-MatchDlg_5vs5::~MatchDlg_5vs5()
+}MatchDlg_5vs5::~MatchDlg_5vs5()
 {
     // 策略插件由插件管理器管理，不需要在此释放
 }
@@ -69,27 +143,32 @@ void MatchDlg_5vs5::setDisplayDlg(DisplayDlg* displayDlg)
 
 void MatchDlg_5vs5::applyMatchParameters()
 {
-    if (!m_strategyPlugin) {
+    if (!m_strategyHandle) {  // 检查策略句柄
         return;
     }
-
     // 阵型 (0=单后卫, 1=双后卫)
-    m_strategyPlugin->setFormationType(m_dan);
+    if (m_setFormation) m_setFormation(m_strategyHandle, m_dan);
 
     // 球门方向 (左半场=0, 右半场=1)
-    m_strategyPlugin->setOurGoalOnRight(m_area == 1);
+    if (m_setOurGoalOnRight) m_setOurGoalOnRight(m_strategyHandle, m_area == 1 ? 1 : 0);
 
     // 开球方 (我方=1, 对方=0)
-    m_strategyPlugin->setOurKickoff(m_attack == 1);
+    if (m_setOurKickoff) m_setOurKickoff(m_strategyHandle, m_attack);
 
-    // 点球模式 (m_dqdirect=点球方向, m_dqsmd=点球模式)
-    m_strategyPlugin->setPenaltyKickMode(m_dqdirect, m_dqsmd);
+    // 点球模式
+    if (m_setPenaltyKickMode) m_setPenaltyKickMode(m_strategyHandle, m_dqdirect, m_dqsmd);
+
+    //开球方式 
+    if (m_setKickoffType) {
+        m_setKickoffType(m_strategyHandle, m_kick);
+    }
 
     // 策略选择
-    m_strategyPlugin->selectStrategy(StrategyNum);
-
+    if (m_selectStrategy) m_selectStrategy(m_strategyHandle, StrategyNum);
     // 设置归位参数
-    m_strategyPlugin->setParameter("return2pt", m_return2pt ? 1.0 : 0.0);
+    if (m_setParameter) {
+        m_setParameter(m_strategyHandle, "return2pt", m_return2pt ? 1.0 : 0.0);
+    }
 }
 
 void MatchDlg_5vs5::initUI()
@@ -174,13 +253,13 @@ void MatchDlg_5vs5::initUI()
     radioNormalKick->setFont(font);
     radioPenaltyKick = new QRadioButton("点球", kickGroupBox);
     radioPenaltyKick->setFont(font);
-    QRadioButton *radioGoalKick = new QRadioButton("门球", kickGroupBox);
+    radioGoalKick = new QRadioButton("门球", kickGroupBox);
     radioGoalKick->setFont(font);
-    QRadioButton *radioFreeKick = new QRadioButton("任意球", kickGroupBox);
+    radioFreeKick = new QRadioButton("任意球", kickGroupBox);
     radioFreeKick->setFont(font);
-    QRadioButton *radioFreeBall = new QRadioButton("争球", kickGroupBox);
+    radioFreeBall = new QRadioButton("争球", kickGroupBox);
     radioFreeBall->setFont(font);
-    QRadioButton *radioShouqiu = new QRadioButton("收车", kickGroupBox);
+    radioShouqiu = new QRadioButton("收车", kickGroupBox);
     radioShouqiu->setFont(font);
     QRadioButton *radioLostCarTest = new QRadioButton("标定测试", kickGroupBox);
     radioLostCarTest->setFont(font);
@@ -285,6 +364,8 @@ void MatchDlg_5vs5::initUI()
     comboStrategy = new QComboBox(this);
     comboStrategy->addItem("1号策略");
     comboStrategy->addItem("2号策略");
+    comboStrategy->addItem("3号策略");
+    comboStrategy->addItem("4号策略");
     comboStrategy->setFont(font);
     strategyLayout->addWidget(strategyLabel);
     strategyLayout->addWidget(comboStrategy);
@@ -335,7 +416,7 @@ void MatchDlg_5vs5::initUI()
 
 void MatchDlg_5vs5::onButtonStart()
 {
-    if (!m_strategyPlugin) {
+    if (!m_strategyHandle || !m_initStrategy) {
         QMessageBox::warning(this, "错误", "策略插件未加载");
         Debug::get()->print("错误：策略插件未加载");
         return;
@@ -355,7 +436,7 @@ void MatchDlg_5vs5::onButtonStart()
         m_dqdirect = 1;
 
     // 初始化策略
-    m_strategyPlugin->initialize(0);
+    m_initStrategy(m_strategyHandle, 0);
 
     // 应用比赛参数到插件
     applyMatchParameters();
@@ -364,13 +445,18 @@ void MatchDlg_5vs5::onButtonStart()
     qDebug() << "Match started!";
     QMessageBox::information(this, "比赛开始", "比赛已开始");
     Debug::get()->print("比赛开始：比赛已启动，机器人进入比赛状态");
+    // 启动策略执行定时器（约30fps，33ms一帧）
+    if (m_strategyTimer) {
+        m_strategyTimer->start(33);  // 33ms = 约30帧/秒
+        Debug::get()->print("策略循环已启动，频率约30Hz");
+    }
     
     // 禁用开始比赛和初始预备按钮
     btnStartMatch->setEnabled(false);
     if (btnPrepare) {
         btnPrepare->setEnabled(false);
     }
-    
+
     // 归位选项设为false
     m_return2pt = false;
 }
@@ -378,6 +464,18 @@ void MatchDlg_5vs5::onButtonStart()
 void MatchDlg_5vs5::onButtonStop()
 {
     m_isMatchRunning = false;
+    // 停止策略定时器
+    if (m_strategyTimer) {
+        m_strategyTimer->stop();
+        Debug::get()->print("策略循环已停止");
+    }
+
+    // 发送停止命令给所有机器人
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
+    for (int i = 1; i <= 5; i++) {
+        proxy->buildCarSpeed(i, 0, 0, 100);
+        proxy->sendOneCar(i);
+    }
     qDebug() << "Match stopped!";
     Debug::get()->print("停止：比赛已停止，机器人进入待命状态");
     
@@ -391,8 +489,8 @@ void MatchDlg_5vs5::onStrategyChanged(int index)
 {
     StrategyNum = index;
 
-    if (m_strategyPlugin) {
-        m_strategyPlugin->selectStrategy(index);
+    if (m_selectStrategy && m_strategyHandle) {
+        m_selectStrategy(m_strategyHandle, index);
     }
 
     qDebug() << "Strategy changed to:" << index;
@@ -401,16 +499,19 @@ void MatchDlg_5vs5::onStrategyChanged(int index)
 
 void MatchDlg_5vs5::onButtonPrepare()
 {
-    if (!m_strategyPlugin) {
+    // 机器人归位
+    if (!m_strategyHandle || !m_parkRobots) {
         QMessageBox::warning(this, "错误", "策略插件未加载");
         Debug::get()->print("错误：策略插件未加载");
         return;
     }
-
+    // 机器人归位
+    m_parkRobots(m_strategyHandle);
     // 根据单双后卫选择策略
     if (radioDan->isChecked()) {
         Debug::get()->print("策略选择：单后卫策略");
-    } else {
+    }
+    else {
         Debug::get()->print("策略选择：双后卫策略");
     }
 
@@ -419,7 +520,7 @@ void MatchDlg_5vs5::onButtonPrepare()
     m_area = radioLeftArea->isChecked() ? 0 : 1;
     m_dan = radioDan->isChecked() ? 0 : 1;
     m_kick = radioNormalKick->isChecked() ? 0 : (radioPenaltyKick->isChecked() ? 1 : 0);
-    
+
     if (radioLeftDirect->isChecked())
         m_dqdirect = 0;
     else if (radioRightDirect->isChecked())
@@ -429,61 +530,91 @@ void MatchDlg_5vs5::onButtonPrepare()
 
     // 应用比赛参数到插件
     applyMatchParameters();
-
-    // 机器人归位
-    m_strategyPlugin->parkRobots();
-
+    // 等待 DisplayDlg 识别数据就绪
     if (m_pDisplayDlg) {
         m_pDisplayDlg->ShowInitGame();
+        // 等待识别数据就绪
+        for (int i = 0; i < 5; i++) {
+            updateDisplayDlgData();
+            QCoreApplication::processEvents();
+            QThread::msleep(50);
+            if (m_hasValidData) break;
+        }
+        // 先获取几帧数据，让识别稳定
+        for (int i = 0; i < 5; i++) {
+            updateDisplayDlgData();
+            QCoreApplication::processEvents();  // 处理事件队列
+            QThread::msleep(50);  // 等待50ms
+            if (m_hasValidData) break;
+        }
+ 
+        if (!m_hasValidData) {
+            Debug::get()->print("警告：识别数据未就绪，请检查标定和采色设置");
+        }
+        else {
+            Debug::get()->print("识别数据已就绪");
+        }
     }
-
     btnStartMatch->setEnabled(true);
     Debug::get()->print("初始预备：机器人已归位，比赛准备就绪");
 }
 
 void MatchDlg_5vs5::onButtonStrategyParam()
 {
-    QString exePath = "e:/bishe/策略/StrategyParamConfig.exe";
-    
+    QString exePath = "C:/Users/2dou/source/repos/STRATEGY/x64/Debug/ParameterDialog.exe";
+
     if (!QFile::exists(exePath)) {
         QMessageBox::warning(this, "错误", "策略参数配置程序不存在\n路径：" + exePath);
         Debug::get()->print("错误：策略参数配置程序不存在");
         return;
     }
-    
-    QProcess *process = new QProcess(this);
+
+    QProcess* process = new QProcess(this);
     bool started = process->startDetached(exePath);
-    
+
     if (started) {
         Debug::get()->print("策略参数配置程序已启动");
-    } else {
+    }
+    else {
         QMessageBox::warning(this, "错误", "无法启动策略参数配置程序");
         Debug::get()->print("错误：无法启动策略参数配置程序");
     }
 }
 void MatchDlg_5vs5::onRadioButtonClicked()
 {
-    // 更新数据变量
+    // 单双后卫
     if (radioDan->isChecked())
         m_dan = 0;
     else if (radioShuang->isChecked())
         m_dan = 1;
 
+    // 开球方
     if (radioAttack->isChecked())
         m_attack = 1;
     else if (radioDefend->isChecked())
         m_attack = 0;
 
+    // 左右半场
     if (radioLeftArea->isChecked())
         m_area = 0;
     else if (radioRightArea->isChecked())
         m_area = 1;
 
+    // 开球方式（补全所有选项）
     if (radioNormalKick->isChecked())
         m_kick = 0;
     else if (radioPenaltyKick->isChecked())
         m_kick = 1;
+    else if (radioGoalKick && radioGoalKick->isChecked())  // 门球
+        m_kick = 2;
+    else if (radioFreeKick && radioFreeKick->isChecked())  // 任意球
+        m_kick = 3;
+    else if (radioFreeBall && radioFreeBall->isChecked())  // 争球
+        m_kick = 4;
+    else if (radioShouqiu && radioShouqiu->isChecked())    // 收车
+        m_kick = 5;
 
+    // 点球方向
     if (radioLeftDirect->isChecked())
         m_dqdirect = 0;
     else if (radioRightDirect->isChecked())
@@ -493,4 +624,102 @@ void MatchDlg_5vs5::onRadioButtonClicked()
 
     // 实时应用设置到策略
     applyMatchParameters();
+} 
+void MatchDlg_5vs5::updateDisplayDlgData()
+{
+    if (!m_pDisplayDlg) return;
+
+    // 获取己方机器人数据
+    for (int i = 0; i < 5; i++) {
+        m_cachedRobots[i].x = m_pDisplayDlg->getRobotX(i);
+        m_cachedRobots[i].y = m_pDisplayDlg->getRobotY(i);
+        m_cachedRobots[i].theta = m_pDisplayDlg->getRobotTheta(i);
+        m_cachedRobots[i].vx = 0;   // 速度信息需要从历史计算，暂时设0
+        m_cachedRobots[i].vy = 0;
+        m_cachedRobots[i].vtheta = 0;
+
+        // 获取对方机器人数据
+        m_cachedOppRobots[i].x = m_pDisplayDlg->getOppRobotX(i);
+        m_cachedOppRobots[i].y = m_pDisplayDlg->getOppRobotY(i);
+    }
+
+    // 获取球的数据
+    m_cachedBall.pos.x = m_pDisplayDlg->getBallX();
+    m_cachedBall.pos.y = m_pDisplayDlg->getBallY();
+    m_cachedBall.vel_x = 0;   // 速度需要从历史计算，暂时设0
+    m_cachedBall.vel_y = 0;
+    m_cachedBall.velocity = 0;
+    m_cachedBall.angle = 0;
+
+    // 检查数据有效性
+    m_hasValidData = m_pDisplayDlg->isDataReady();
+}
+void MatchDlg_5vs5::sendVelocitiesToRobots(const WheelVelocity velocities[5])
+{// 先注释掉，只打印日志
+    for (int i = 0; i < 5; i++) {
+        Debug::get()->print(QString("Robot %1: L=%2, R=%3")
+            .arg(i + 1)
+            .arg(velocities[i].left, 0, 'f', 1)
+            .arg(velocities[i].right, 0, 'f', 1));
+    }
+    USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
+
+   for (int i = 0; i < 5; i++) {
+       int carNum = i + 1;  // 车号从1开始
+        // 轮速单位：cm/s，这里直接使用策略计算的值
+        int leftSpeed = (int)velocities[i].left;
+        int rightSpeed = (int)velocities[i].right;
+
+        // 限制速度范围
+       leftSpeed = std::max(-100, std::min(100, leftSpeed));
+       rightSpeed = std::max(-100, std::min(100, rightSpeed));
+
+       proxy->buildCarSpeed(carNum, leftSpeed, rightSpeed, 100);
+        proxy->sendOneCar(carNum);
+    }
+}
+void MatchDlg_5vs5::onStrategyTimer()
+{
+    // 检查策略是否运行中
+    if (!m_isMatchRunning) return;
+
+    // 检查 DLL 函数是否可用
+    if (!m_strategyHandle || !m_decide) return;
+
+    // 从 DisplayDlg 获取最新的识别数据
+    updateDisplayDlgData();
+
+    // 如果数据无效，跳过这一帧（等待识别稳定）
+    if (!m_hasValidData) {
+        // Debug::get()->print("等待识别数据...");
+        return;
+    }
+
+    // 准备轮速输出数组
+    WheelVelocity velocities[5];
+
+    // 调用 DLL 的决策函数
+    m_decide(m_strategyHandle,
+        m_cachedRobots,      // 己方机器人位姿
+        m_cachedOppRobots,   // 对方机器人位置
+        &m_cachedBall,       // 球的信息
+        velocities);         // 输出轮速
+
+    // 将计算出的轮速发送给机器人
+    sendVelocitiesToRobots(velocities);
+
+    // 可选：输出调试信息
+    static int frameCount = 0;
+    if (++frameCount % 30 == 0) {  // 每30帧输出一次
+        Debug::get()->print(QString("策略执行中 - 球位置: (%1, %2)")
+            .arg(m_cachedBall.pos.x, 0, 'f', 1)
+            .arg(m_cachedBall.pos.y, 0, 'f', 1));
+    }
+}
+void MatchDlg_5vs5::onUpdateFPS()
+{
+    if (m_pDisplayDlg) {
+        // 可以在这里更新界面上的帧率显示
+        // 或者什么都不做，只是保持定时器运行
+    }
 }

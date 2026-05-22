@@ -1,4 +1,4 @@
-// UnifiedStrategy.h
+﻿// UnifiedStrategy.h
 // 统一策略 - 整合所有模块的完整策略实现
 
 #ifndef UNIFIEDSTRATEGY_H
@@ -117,7 +117,7 @@ public:
     // ========== 配置接口 ==========
     void setOurGoalOnRight(bool onRight) { m_field.setOurGoalSide(onRight); }
     void setOurKickoff(bool isOurKickoff) { m_isOurKickoff = isOurKickoff; }
-
+    void setKickoffType(int type);
     // 应用策略配置
     void applyStrategyConfig(const StrategyConfig& config);
 
@@ -133,8 +133,6 @@ public:
     double getControlParam(const std::string& key) const;
     bool saveConfig(const std::string& filename);
     bool loadConfig(const std::string& filename);
-
-    void setKickoffType(int type);
     void setFormationType(bool isSingleDefender);
 
     void setPenaltyKickMode(int direction, int mode);  // direction: 0左晃,1直冲,2右晃; mode: 守门位置 0左,1中,2右

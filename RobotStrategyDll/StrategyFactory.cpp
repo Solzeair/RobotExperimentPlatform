@@ -1,4 +1,4 @@
-// StrategyFactory.cpp
+﻿// StrategyFactory.cpp
 // 策略工厂实现
 
 #include "strategyfactory.h"
