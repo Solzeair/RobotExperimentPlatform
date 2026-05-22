@@ -4,7 +4,8 @@
 #include "Formation.h"
 
 using namespace GeometryUtils;
-
+// 静态成员变量定义
+bool Formation::m_isSingleDefender = false;  // 默认双后卫
 /**
  * 根据区域号获取队形
  * 这是队形管理的主入口函数
@@ -56,6 +57,16 @@ std::vector<Role> Formation::getFormation(int areaNo, const BallInfo& ball,
  */
 std::vector<Role> Formation::getFormation1(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
+    if (m_isSingleDefender) {  // 需要传入这个标志
+        // 单后卫阵型：只有1个后卫，其他前压
+        roles[0] = Role(ROLE_WAIT_135_UP, Point(25, 140), 0.9, "左上护球", 60);
+        roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.7, "横向等球", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);  // 改为支援
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        // 双后卫阵型
     // 优先级0.9：左上护球（保护球权）
     roles[0] = Role(ROLE_WAIT_135_UP, Point(25, 140), 0.9, "左上护球", 60);
     // 优先级0.8：边线推球（将球从边界推回）
@@ -66,6 +77,7 @@ std::vector<Role> Formation::getFormation1(const BallInfo& ball, const FieldGeom
     roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
     // 优先级0.5：守门员
     roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
@@ -75,11 +87,20 @@ std::vector<Role> Formation::getFormation1(const BallInfo& ball, const FieldGeom
  */
 std::vector<Role> Formation::getFormation2(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_WAIT_135_UP, Point(25, 140), 0.9, "左上护球", 60);
-    roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
-    roles[2] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.7, "横向等球2", 65);
-    roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_WAIT_135_UP, Point(25, 140), 0.9, "左上护球", 60);
+        roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.7, "横向等球2", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_WAIT_135_UP, Point(25, 140), 0.9, "左上护球", 60);
+        roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.7, "横向等球2", 65);
+        roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
@@ -89,54 +110,101 @@ std::vector<Role> Formation::getFormation2(const BallInfo& ball, const FieldGeom
  */
 std::vector<Role> Formation::getFormation3(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
-    roles[2] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.7, "横向等球2", 65);
-    roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.8, "横向等球2", 65);
+        roles[2] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.7, "支援", 70);
+        roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.7, "横向等球2", 65);
+        roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 // ==================== 区域4：右边界区域 - 后卫+防守 ====================
 std::vector<Role> Formation::getFormation4(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
-    roles[2] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.7, "大禁区专职后卫(下)", 65);
-    roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.8, "支援", 70);
+        roles[2] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.7, "大禁区专职后卫(下)", 65);
+        roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
+        roles[2] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.7, "大禁区专职后卫(下)", 65);
+        roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
+
 
 // ==================== 区域5：小禁区左侧 - 密集防守 ====================
 std::vector<Role> Formation::getFormation5(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
-    roles[2] = Role(ROLE_WAIT_HORIZONTAL_3, Point(25, ball.pos.y), 0.7, "横向等球3", 65);
-    roles[3] = Role(ROLE_WAIT_LEFT, Point(80, ball.pos.y), 0.6, "左边等球", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_WAIT_HORIZONTAL_3, Point(25, ball.pos.y), 0.8, "横向等球3", 65);
+        roles[2] = Role(ROLE_WAIT_LEFT, Point(80, ball.pos.y), 0.7, "左边等球", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL_3, Point(25, ball.pos.y), 0.7, "横向等球3", 65);
+        roles[3] = Role(ROLE_WAIT_LEFT, Point(80, ball.pos.y), 0.6, "左边等球", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
+
 
 // ==================== 区域6：大禁区左侧 - 防守反击 ====================
 std::vector<Role> Formation::getFormation6(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
-    roles[2] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.7, "横向等球2", 65);
-    roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.8, "横向等球2", 65);
+        roles[2] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.7, "大禁区专职后卫(下)", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.7, "横向等球2", 65);
+        roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域7：中场左 - 平衡 ====================
 std::vector<Role> Formation::getFormation7(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
-    roles[2] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.7, "横向等球", 65);
-    roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.8, "横向等球", 65);
+        roles[2] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.7, "大禁区专职后卫(上)", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.7, "横向等球", 65);
+        roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 /**
@@ -145,101 +213,180 @@ std::vector<Role> Formation::getFormation7(const BallInfo& ball, const FieldGeom
  */
 std::vector<Role> Formation::getFormation8(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
-    roles[2] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.7, "射门", 80);  // 射门角色
-    roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.7, "大禁区专职后卫(上)", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
+        roles[2] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.7, "射门", 80);
+        roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 // ==================== 区域9：小禁区上 - 防守 ====================
 std::vector<Role> Formation::getFormation9(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
-    roles[2] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.7, "横向等球", 65);
-    roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.8, "横向等球", 65);
+        roles[2] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.7, "大禁区专职后卫(上)", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.7, "横向等球", 65);
+        roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域10：大禁区上 - 防守 ====================
 std::vector<Role> Formation::getFormation10(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
-    roles[2] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.7, "横向等球2", 65);
-    roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.8, "横向等球2", 65);
+        roles[2] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.7, "大禁区专职后卫(下)", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.7, "横向等球2", 65);
+        roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
+
 
 // ==================== 区域11：中场左上 - 进攻准备 ====================
 std::vector<Role> Formation::getFormation11(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
-    roles[2] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.7, "射门", 80);
-    roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.7, "大禁区专职后卫(上)", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
+        roles[2] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.7, "射门", 80);
+        roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域12：中场中上 - 进攻 ====================
 std::vector<Role> Formation::getFormation12(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
-    roles[2] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.7, "射门", 80);
-    roles[3] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.6, "直冲", 85);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.7, "直冲", 85);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.9, "上专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.8, "下专职后卫", 70);
+        roles[2] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.7, "射门", 80);
+        roles[3] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.6, "直冲", 85);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域13：下边界区域 - 防守 ====================
 std::vector<Role> Formation::getFormation13(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.8, "上专职后卫", 70);
-    roles[2] = Role(ROLE_WAIT_HORIZONTAL_3, Point(25, ball.pos.y), 0.7, "横向等球3", 65);
-    roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
+        roles[1] = Role(ROLE_WAIT_HORIZONTAL_3, Point(25, ball.pos.y), 0.8, "横向等球3", 65);
+        roles[2] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.7, "大禁区专职后卫(下)", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.8, "上专职后卫", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL_3, Point(25, ball.pos.y), 0.7, "横向等球3", 65);
+        roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
-
 // ==================== 区域14：中场中下 - 平衡 ====================
 std::vector<Role> Formation::getFormation14(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.8, "上专职后卫", 70);
-    roles[2] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.7, "射门", 80);
-    roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.7, "大禁区专职后卫(下)", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.8, "上专职后卫", 70);
+        roles[2] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.7, "射门", 80);
+        roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
-
 // ==================== 区域15：中场右下 - 反击 ====================
 std::vector<Role> Formation::getFormation15(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
-    roles[1] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.8, "上专职后卫", 70);
-    roles[2] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.7, "射门", 80);
-    roles[3] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.6, "直冲", 85);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.7, "直冲", 85);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
+        roles[1] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.8, "上专职后卫", 70);
+        roles[2] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.7, "射门", 80);
+        roles[3] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.6, "直冲", 85);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域16：左下角 - 护球 ====================
 std::vector<Role> Formation::getFormation16(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
-    roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
-    roles[2] = Role(ROLE_WAIT_HORIZONTAL_3, Point(25, ball.pos.y), 0.7, "横向等球3", 65);
-    roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
+        roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL_3, Point(25, ball.pos.y), 0.7, "横向等球3", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.9, "下专职后卫", 70);
+        roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL_3, Point(25, ball.pos.y), 0.7, "横向等球3", 65);
+        roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
-
 /* ==================== 区域17-32：对方半场进攻型队形 ==================== */
 
 /**
@@ -248,21 +395,39 @@ std::vector<Role> Formation::getFormation16(const BallInfo& ball, const FieldGeo
  */
 std::vector<Role> Formation::getFormation17(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
-    roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 // ==================== 区域18：上边界右 - 边线推球 ====================
 std::vector<Role> Formation::getFormation18(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
-    roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_WAIT_RIGHT, Point(140, 90), 0.6, "右边等球", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_RIGHT, Point(140, 90), 0.6, "右边等球", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_RIGHT, Point(140, 90), 0.6, "右边等球", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 /**
@@ -271,153 +436,277 @@ std::vector<Role> Formation::getFormation18(const BallInfo& ball, const FieldGeo
  */
 std::vector<Role> Formation::getFormation19(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
-    roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 // ==================== 区域20：中场右 - 进攻 ====================
 std::vector<Role> Formation::getFormation20(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
-    roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域21：小禁区右侧 - 防守 ====================
 std::vector<Role> Formation::getFormation21(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
-    roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
+
 
 // ==================== 区域22：大禁区右侧 - 进攻 ====================
 std::vector<Role> Formation::getFormation22(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
-    roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_PENALTY_AREA_UP, Point(45, 110), 0.6, "大禁区专职后卫(上)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域23：中场右上 - 进攻 ====================
 std::vector<Role> Formation::getFormation23(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
-    roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
-
 // ==================== 区域24：中场中右 - 进攻 ====================
 std::vector<Role> Formation::getFormation24(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
-    roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
-
 // ==================== 区域25：下边界右 - 防守 ====================
 std::vector<Role> Formation::getFormation25(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
-    roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.7, "下专职后卫", 70);
-    roles[3] = Role(ROLE_WAIT_RIGHT, Point(140, 90), 0.6, "右边等球", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.7, "下专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_RIGHT, Point(140, 90), 0.6, "右边等球", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.7, "下专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_RIGHT, Point(140, 90), 0.6, "右边等球", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域26：中下右 - 反击 ====================
 std::vector<Role> Formation::getFormation26(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
-    roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.7, "下专职后卫", 70);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.6, "上专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.7, "下专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.7, "下专职后卫", 70);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.6, "上专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域27：右下角 - 护球 ====================
 std::vector<Role> Formation::getFormation27(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
-    roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.7, "下专职后卫", 70);
-    roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.7, "下专职后卫", 70);
+        roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
+        roles[1] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.8, "射门", 80);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.7, "下专职后卫", 70);
+        roles[3] = Role(ROLE_PENALTY_AREA_DOWN, Point(45, 70), 0.6, "大禁区专职后卫(下)", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域28：中场区域 - 组织进攻 ====================
 std::vector<Role> Formation::getFormation28(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
-    roles[1] = Role(ROLE_WAIT_RIGHT, Point(140, 90), 0.8, "右边等球", 65);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_WAIT_RIGHT, Point(140, 90), 0.8, "右边等球", 65);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_WAIT_RIGHT, Point(140, 90), 0.8, "右边等球", 65);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
-
 // ==================== 区域29：中场区域 - 组织进攻2 ====================
 std::vector<Role> Formation::getFormation29(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
-    roles[1] = Role(ROLE_WAIT_LEFT, Point(80, ball.pos.y), 0.8, "左边等球", 65);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_WAIT_LEFT, Point(80, ball.pos.y), 0.8, "左边等球", 65);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_WAIT_LEFT, Point(80, ball.pos.y), 0.8, "左边等球", 65);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域30：中场区域 - 防守反击 ====================
 std::vector<Role> Formation::getFormation30(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.9, "直冲", 85);
-    roles[1] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.8, "横向等球2", 65);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.9, "直冲", 85);
+        roles[1] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.8, "横向等球2", 65);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.9, "直冲", 85);
+        roles[1] = Role(ROLE_WAIT_HORIZONTAL_2, Point(25, ball.pos.y), 0.8, "横向等球2", 65);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域31：中场区域 - 控球 ====================
 std::vector<Role> Formation::getFormation31(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_WAIT_CENTER, Point(110, 90), 0.9, "中间等球", 65);
-    roles[1] = Role(ROLE_WAIT_LEFT, Point(80, ball.pos.y), 0.8, "左边等球", 65);
-    roles[2] = Role(ROLE_WAIT_RIGHT, Point(140, ball.pos.y), 0.7, "右边等球", 65);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.6, "上专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_WAIT_CENTER, Point(110, 90), 0.9, "中间等球", 65);
+        roles[1] = Role(ROLE_WAIT_LEFT, Point(80, ball.pos.y), 0.8, "左边等球", 65);
+        roles[2] = Role(ROLE_WAIT_RIGHT, Point(140, ball.pos.y), 0.7, "右边等球", 65);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_WAIT_CENTER, Point(110, 90), 0.9, "中间等球", 65);
+        roles[1] = Role(ROLE_WAIT_LEFT, Point(80, ball.pos.y), 0.8, "左边等球", 65);
+        roles[2] = Role(ROLE_WAIT_RIGHT, Point(140, ball.pos.y), 0.7, "右边等球", 65);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.6, "上专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
 // ==================== 区域32：中场区域 - 全面进攻 ====================
 std::vector<Role> Formation::getFormation32(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
-    roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
-    roles[2] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.7, "横向等球", 65);
-    roles[3] = Role(ROLE_WAIT_CENTER, Point(110, 90), 0.6, "中间等球", 65);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.7, "横向等球", 65);
+        roles[3] = Role(ROLE_WAIT_CENTER, Point(110, 90), 0.6, "中间等球", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_DIRECT_CHARGE, Point(165, 90), 0.8, "直冲", 85);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.7, "横向等球", 65);
+        roles[3] = Role(ROLE_WAIT_CENTER, Point(110, 90), 0.6, "中间等球", 65);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 
@@ -426,22 +715,41 @@ std::vector<Role> Formation::getFormation32(const BallInfo& ball, const FieldGeo
 // 边界队形
 std::vector<Role> Formation::getBoundaryFormation(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
-    roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
-    roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
+        roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_WAIT_SUPPORT, Point(35, ball.pos.y), 0.6, "支援", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_BOUND_PUSH, ball.pos, 0.9, "边线推球", 70);
+        roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
+        roles[2] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.7, "上专职后卫", 70);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_DOWN, Point(18, ball.pos.y - 10), 0.6, "下专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
+
 
 // 角球队形
 std::vector<Role> Formation::getCornerFormation(const BallInfo& ball, const FieldGeometry& field) {
     std::vector<Role> roles(5);
-    roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
-    roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
-    roles[2] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.7, "横向等球", 65);
-    roles[3] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.6, "上专职后卫", 70);
-    roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    if (m_isSingleDefender) {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.7, "横向等球", 65);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.6, "上专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
+    else {
+        roles[0] = Role(ROLE_SHOOT, field.getOppGoalPos(), 0.9, "射门", 80);
+        roles[1] = Role(ROLE_BOUND_PUSH, ball.pos, 0.8, "边线推球", 70);
+        roles[2] = Role(ROLE_WAIT_HORIZONTAL, Point(25, ball.pos.y), 0.7, "横向等球", 65);
+        roles[3] = Role(ROLE_SPECIAL_DEFENDER_UP, Point(18, ball.pos.y + 10), 0.6, "上专职后卫", 70);
+        roles[4] = Role(ROLE_GOALIE, field.getOurGoalPos(), 0.5, "守门员", 55);
+    }
     return roles;
 }
 

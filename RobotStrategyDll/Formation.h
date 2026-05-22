@@ -33,6 +33,9 @@ struct FormationConfig {
  */
 class Formation {
 public:
+    // 新增：设置单双后卫模式
+    static void setSingleDefender(bool isSingle) { m_isSingleDefender = isSingle; }
+    static bool isSingleDefender() { return m_isSingleDefender; }
     /**
      * 根据区域号获取队形（5个角色）
      * @param areaNo 区域编号（1-32）
@@ -150,6 +153,8 @@ public:
  //任意球队形声明
     static std::vector<Role> getFreeKickFormation(bool isOurFreeKick, const FieldGeometry& field);
 private:
+    // 新增：静态成员变量，存储单双后卫状态
+    static bool m_isSingleDefender;
     // ========== 32个区域的队形定义 ==========
     static std::vector<Role> getFormation1(const BallInfo& ball, const FieldGeometry& field);
     static std::vector<Role> getFormation2(const BallInfo& ball, const FieldGeometry& field);

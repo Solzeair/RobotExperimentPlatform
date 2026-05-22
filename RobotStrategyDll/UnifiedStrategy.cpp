@@ -112,27 +112,32 @@ void UnifiedStrategy::taskDecompose(int areaNo, const BallInfo& ball) {
     // 原MFC的 taskDecompose() 函数
     // 根据区域号确定队形号
     m_areaNo = areaNo;
-
-    // 边界特殊处理
+    // 先处理边界特殊情况（优先级最高）
     if (isNearBoundary(ball.pos)) {
-        m_formationNo = 100;  // 边界队形
+        m_formationNo = 100;
         return;
     }
-
     if (isCornerSituation(ball.pos)) {
-        m_formationNo = 101;  // 角球队形
+        m_formationNo = 101;
         return;
     }
 
-    // 根据区域选择队形
-    m_formationNo = areaNo;
+    // 正常情况：根据策略模式调整区域号
+    int effectiveAreaNo = areaNo;
+    if (m_attackAggression > 0.75 && effectiveAreaNo <= 16) {
+        // 进攻策略：球在后场时也向前压
+        effectiveAreaNo = std::min(32, effectiveAreaNo + 8);
+    }
+    else if (m_attackAggression < 0.4 && effectiveAreaNo >= 17) {
+        // 防守策略：球在前场时也向后撤
+        effectiveAreaNo = std::max(1, effectiveAreaNo - 8);
+    }
+
+    m_formationNo = effectiveAreaNo;
 }
 
 // 在 UnifiedStrategy.cpp 的 formInterpret 函数中添加边界检查
 void UnifiedStrategy::formInterpret(int formationNo, const BallInfo& ball) {
-    m_roles.clear();
-
-    // 直接获取角色向量，不需要FormationConfig
     std::vector<Role> roles;
 
     if (formationNo == 100) {
@@ -146,19 +151,20 @@ void UnifiedStrategy::formInterpret(int formationNo, const BallInfo& ball) {
     }
     else {
         roles = Formation::getFormation(1, ball, m_field);
-        if (m_isSingleDefender) {
-            // 单后卫：将第二个后卫改为进攻角色
-            for (auto& role : m_roles) {
-                if (role.roleId == ROLE_SPECIAL_DEFENDER_DOWN) {
-                    role.roleId = ROLE_WAIT_SUPPORT;
-                    role.name = "单后卫-支援";
-                    break;
-                }
+    }
+
+    // ✅ 单双后卫调整（在赋值给 m_roles 之前处理 roles）
+    if (m_isSingleDefender) {
+        for (auto& role : roles) {
+            if (role.roleId == ROLE_SPECIAL_DEFENDER_DOWN) {
+                role.roleId = ROLE_WAIT_SUPPORT;
+                role.name = "单后卫-支援";
+                break;
             }
         }
     }
 
-    // 直接赋值给m_roles
+    // 赋值给 m_roles
     m_roles = roles;
 
     // 确保有5个角色
@@ -815,6 +821,7 @@ void UnifiedStrategy::setKickoffType(int type) {
 
 void UnifiedStrategy::setFormationType(bool isSingleDefender) {
     m_isSingleDefender = isSingleDefender;
+    Formation::setSingleDefender(isSingleDefender);
 }
 
 // 点球模式设置
