@@ -1,8 +1,8 @@
 ﻿/*
-* 摄像头调整对话框头文件
+* 摄像头调整对话框文件
 * 写作人 李青
-* 功能 声明摄像头调整界面的类，包含参数滑块、输入框及相关槽函数的声明。
-* 未完成
+* 功能 摄像头调整界面设计，包含亮度、增益、对比度、快门、红色、绿色、蓝色等参数的滑块和输入框，以及保存按钮。
+* 已完成
 */
 #pragma once
 
@@ -14,6 +14,13 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QMessageBox>
+#include <QKeyEvent>
+#include <QEvent>
+#include <QTimer>
+#include <QElapsedTimer>
+
+// 前向声明
+class Camera;
 
 class CameraDlg : public QWidget
 {
@@ -34,6 +41,9 @@ private slots:
     void onSaveCamera();                        // 保存设置按钮点击
     void onEditReturnPressed();                 // 编辑框回车事件，用于同步滑块
 
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override;
+
 private:
     void initUI();
 
@@ -41,9 +51,7 @@ private:
     // 布局
     QVBoxLayout *mainLayout;  // 主垂直布局容器
     
-    // 控件
-    QLabel *cameraViewLabel;   // 摄像头显示区域
-    QLabel *outputLabel;       // 输出区域
+
     QSlider *sliderBlackLevel;  // 亮度滑块
     QSlider *sliderGain;        // 增益滑块
     QSlider *sliderGamma;       // 对比度滑块
@@ -78,4 +86,9 @@ private:
     double red;                 // 红色参数
     double green;               // 绿色参数
     double blue;                // 蓝色参数
+    
+    // 相机实例
+    Camera * _pCamera;
+    
+
 };

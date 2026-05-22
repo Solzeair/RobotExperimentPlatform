@@ -8,6 +8,10 @@
 #include <QTabWidget>
 #include <QScreen>
 #include <QGuiApplication>
+#include <QCloseEvent>
+
+// 前向声明
+class DemarcateDlg;
 
 // 主窗口继承无边框基类
 class QtWidgetDesign : public CFrameLessWidgetBase
@@ -18,7 +22,10 @@ public:
     QtWidgetDesign(QWidget *parent = nullptr);
     ~QtWidgetDesign();
 
+protected:
+    void closeEvent(QCloseEvent* event) override;
+
 private:
-	// Qm_pCentralWidget* m_pCentralWidget; // 分页标签容器
+    DemarcateDlg* m_pDemarcateDlg = nullptr;
 
 };

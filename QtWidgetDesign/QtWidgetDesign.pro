@@ -9,20 +9,42 @@ SOURCES += \
     main.cpp \
     QtWidgetDesign.cpp \
     CameraDlg.cpp \
-    RobotDlg.cpp \
-    DemarcateDlg.cpp \
     ColorDlg.cpp \
-    MatchDlg_5vs5.cpp
+    RobotDlg.cpp \
+    MatchDlg_5vs5.cpp \
+    Camera.cpp \
+    DisplayDlg.cpp \
+    Debug.cpp \
+    DemarcateDlg.cpp \
+    PluginManager.cpp
 
 HEADERS += \
     QtWidgetDesign.h \
     CameraDlg.h \
-    RobotDlg.h \
-    DemarcateDlg.h \
     ColorDlg.h \
-    MatchDlg_5vs5.h
+    RobotDlg.h \
+    MatchDlg_5vs5.h \
+    Camera.h \
+    DisplayDlg.h \
+    DemarcateDlg.h \
+    Debug.h \
+    USB340HID61_DEF.h \
+    PluginInterface.h \
+    PluginManager.h \
+    StrategyPluginInterface.h \
+    utili.h
 
 CONFIG += c++11
+
+LIBS += -L$$PWD/ -lUSB340HID61
+
+# OpenCV配置
+INCLUDEPATH += C:/opencv/build/include
+LIBS += -LC:/opencv/build/x64/vc15/lib \
+    -lopencv_core455 \
+    -lopencv_imgproc455 \
+    -lopencv_highgui455 \
+    -lopencv_videoio455
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

@@ -15,17 +15,41 @@
 #include <QCheckBox>
 #include <QRadioButton>
 #include <QGroupBox>
+#include <QButtonGroup>
 #include <QPainter>
 #include <QColor>
 #include <cmath>
+#include <QTimer>
+#include <QElapsedTimer>
+#include <QVector>
+#include <QPoint>
+#include <QPixmap>
+#include <QPainterPath>
+
+// --- 范围常量 ---
+static const int H_RANGE_MAX   = 3600;
+static const int S_RANGE_MAX   = 100;
+static const int I_RANGE_MAX   = 255;
+static const int H_SAMPLE_OFFSET = 100;  // H 采样容差 (对应 10°)
+static const int S_SAMPLE_OFFSET = 20;   // S 采样容差 20%
+static const int I_SAMPLE_OFFSET = 20;   // I 采样容差 20
 
 class ColorDlg : public QWidget
 {
     Q_OBJECT
-
 public:
     ColorDlg(QWidget *parent = nullptr); // 初始化采色界面
     ~ColorDlg();
+    static ColorDlg* getInstance(); // 获取单例实例
+    const int(*getHSIThreshold())[6] { return HSIThreshold; } // 获取HSI阈值
+    int currentObject() const { return m_object; }            // 获取当前选中对象
+
+public slots:
+    void updateDisplayImage(const QPixmap& pixmap);
+    void onZoom();
+    void onSample();
+    void onClearSamples();
+
 
 private slots:
     void onButtonColorTest();             // 颜色测试按钮
@@ -38,8 +62,11 @@ private slots:
 
 private:
     void initUI();                        // UI初始化
-    void UpdateHSIThreshold();            // 更新HSI阈值
-    void drawHSIRing();                   // 绘制HSI颜色环
+    void UpdateHSIThreshold();            // 更新HSI阈值（滑块→数组）
+    void loadThresholdForObject(int obj); // 切换对象时加载阈值（数组→滑块）
+    void drawHSIRing();                   // 绘制HSI颜色环（位图+叠加层）
+    void drawHSIRingFallback();           // 程序绘制色环（位图加载失败时的回退）
+    void drawBrightnessHistogram();       // 绘制亮度直方图
 
 private:
     // --- 布局部件 ---
@@ -54,11 +81,15 @@ private:
     QPushButton* colorLoadButton;         // 加载按钮
     QPushButton* colorSaveButton;         // 保存按钮
     QCheckBox* segCheckBox;               // 图像分割复选框
+    QButtonGroup* m_objectGroup;          // 对象单选按钮组
 
     // 滚动条
     QScrollBar* scrollBarHMin;            // 色调下限调节滚动条
+    QScrollBar* scrollBarHMax;            // 色调上限调节滚动条
     QScrollBar* scrollBarSMin;            // 饱和度下限调节滚动条
+    QScrollBar* scrollBarSMax;            // 饱和度上限调节滚动条
     QScrollBar* scrollBarIMin;            // 亮度下限调节滚动条
+    QScrollBar* scrollBarIMax;            // 亮度上限调节滚动条
 
     // --- 数据变量 ---
     bool m_SelectRect;                    // 是否处于矩形选择状态
@@ -73,5 +104,24 @@ private:
     bool m_isSaved;                       // 参数是否已保存
     int HSIThreshold[8][6];               // 各颜色HSI阈值
     QVector<QPoint> m_vecColorSet;        // 采样颜色点集合
+    QVector<QPoint> m_points;             // 点选模式采集的点（放大区坐标）
     int yi[255];                          // 特定映射数值
+     // 声明成员变量
+    QLabel* m_pDisplayLabel;
+    QLabel* brightnessGraphLabel;       // 亮度直方图显示标签
+    QPixmap m_lastFrame;                  // 最近一帧（未缩放），用于准确采样
+    QRect   m_zoomSourceRect;             // 放大操作对应的原始图像矩形
+    // 交互选择状态
+    bool m_selecting = false;             // 正在拖拽选择矩形
+    QPoint m_selectStart;                 // 选择起点（label 坐标）
+    QRect m_currentRect;                  // 当前选择矩形（label 坐标）
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
+private:
+    void redrawPreview();                 // 在 m_pDisplayLabel 上重绘预览及覆盖层
+    void sampleAtImageRect(const QRect& imgRect); // 在原始图像坐标的矩形上采样
+    void sampleAtImagePoint(const QPoint& imgPt); // 在原始图像坐标的点附近采样
+
 };
