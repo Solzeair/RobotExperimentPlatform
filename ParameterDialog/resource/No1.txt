@@ -1,0 +1,19 @@
+# Robot Strategy Parameters
+# Format: parameter_name = value
+
+max_speed = 90  # 最大移动速度 (cm/s)
+min_speed = 15  # 最小移动速度 (cm/s)
+kp_pos = 12  # 位置比例系数
+kp_angle = 22  # 角度比例系数
+kd_pos = 0.5  # 位置微分系数
+kd_angle = 7  # 角度微分系数
+attack_aggression = 0.85  # 进攻侵略性 (0-1)
+defense_depth = 0.3  # 防守深度 (0-1)
+pressing_intensity = 0.8  # 压迫强度 (0-1)
+shoot_power = 80  # 射门力量
+shoot_angle_tolerance = 0.2  # 射门角度容差 (rad)
+pass_success_threshold = 0.6  # 传球成功率阈值
+goalie_aggression = 0.5  # 门将出击侵略性
+goalie_speed = 60  # 门将移动速度
+avoid_distance = 25  # 避障距离 (cm)
+avoid_weight = 1.5  # 避障权重
