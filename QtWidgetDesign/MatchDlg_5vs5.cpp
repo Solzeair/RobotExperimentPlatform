@@ -1,4 +1,4 @@
-/*
+﻿/*
 * 5v5比赛对话框源文件
 * 写作人 李青
 * 功能 5v5比赛控制界面逻辑实现，包含开球类型、阵型布置、点球及战术选择功能响应。
@@ -10,8 +10,10 @@
 #include "PluginManager.h"
 #include <QMessageBox>
 #include <QDebug>
+#include <QLibrary> 
+#include <QFile>         
 
-MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
+MatchDlg_5vs5::MatchDlg_5vs5(QWidget* parent)
     : QWidget(parent)
     , m_attack(0)
     , m_BallLost(true)
@@ -43,17 +45,69 @@ MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     initUI();
-    // 通过插件管理器从指定路径加载策略插件
-    PluginManager* pluginManager = PluginManager::getInstance();
-    QString dllPath = QString("e:/bishe/策略/RobotStrategyDll.dll");
-    pluginManager->loadPlugin(dllPath, PluginType::STRATEGY);
-    m_strategyPlugin = dynamic_cast<StrategyPluginInterface*>(pluginManager->getPlugin(PluginType::STRATEGY));
-    
+
+    // ========== 直接加载策略 DLL ==========
+    QString dllPath = "C:/Users/2dou/source/repos/STRATEGY/x64/Debug/RobotStrategyDll.dll";
+
+    if (!QFile::exists(dllPath)) {
+        Debug::get()->print("策略DLL不存在: " + dllPath);
+        QMessageBox::warning(this, "错误", "策略DLL不存在\n" + dllPath);
+        btnStartMatch->setEnabled(false);
+        return;
+    }
+
+    Debug::get()->print("尝试加载: " + dllPath);
+
+    QLibrary lib(dllPath);
+    if (!lib.load()) {
+        Debug::get()->print("加载 DLL 失败: " + lib.errorString());
+        btnStartMatch->setEnabled(false);
+        return;
+    }
+
+    // 解析函数指针
+    CreateStrategyFunc createStrategy = (CreateStrategyFunc)lib.resolve("CreateStrategy");
+    InitializeStrategyFunc initStrategy = (InitializeStrategyFunc)lib.resolve("InitializeStrategy");
+    SetFormationTypeFunc setFormation = (SetFormationTypeFunc)lib.resolve("SetFormationType");
+    SetOurGoalOnRightFunc setOurGoalOnRight = (SetOurGoalOnRightFunc)lib.resolve("setOurGoalOnRight");
+    SetOurKickoffFunc setOurKickoff = (SetOurKickoffFunc)lib.resolve("setOurKickoff");
+    SetPenaltyKickModeFunc setPenaltyKickMode = (SetPenaltyKickModeFunc)lib.resolve("SetPenaltyKickMode");
+    SelectStrategyFunc selectStrategy = (SelectStrategyFunc)lib.resolve("SelectStrategy");
+    SetParameterFunc setParameter = (SetParameterFunc)lib.resolve("setParameter");
+    ParkRobotsFunc parkRobots = (ParkRobotsFunc)lib.resolve("ParkRobots");
+
+    if (!createStrategy || !initStrategy) {
+        Debug::get()->print("解析函数失败");
+        btnStartMatch->setEnabled(false);
+        return;
+    }
+
+    // 创建策略实例
+    m_strategyHandle = createStrategy();
+    if (!m_strategyHandle) {
+        Debug::get()->print("创建策略实例失败");
+        btnStartMatch->setEnabled(false);
+        return;
+    }
+
+    // 保存函数指针
+    m_initStrategy = initStrategy;
+    m_setFormation = setFormation;
+    m_setOurGoalOnRight = setOurGoalOnRight;
+    m_setOurKickoff = setOurKickoff;
+    m_setPenaltyKickMode = setPenaltyKickMode;
+    m_selectStrategy = selectStrategy;
+    m_setParameter = setParameter;
+    m_parkRobots = parkRobots;
+
+    // 初始化策略
+    m_initStrategy(m_strategyHandle, 0);
+
+    Debug::get()->print("策略加载成功！");
+
     // 初始状态：禁用开始比赛按钮
     btnStartMatch->setEnabled(false);
-}
-
-MatchDlg_5vs5::~MatchDlg_5vs5()
+}MatchDlg_5vs5::~MatchDlg_5vs5()
 {
     // 策略插件由插件管理器管理，不需要在此释放
 }
@@ -72,24 +126,24 @@ void MatchDlg_5vs5::applyMatchParameters()
     if (!m_strategyPlugin) {
         return;
     }
-
     // 阵型 (0=单后卫, 1=双后卫)
-    m_strategyPlugin->setFormationType(m_dan);
+    if (m_setFormation) m_setFormation(m_strategyHandle, m_dan);
 
     // 球门方向 (左半场=0, 右半场=1)
-    m_strategyPlugin->setOurGoalOnRight(m_area == 1);
+    if (m_setOurGoalOnRight) m_setOurGoalOnRight(m_strategyHandle, m_area == 1 ? 1 : 0);
 
     // 开球方 (我方=1, 对方=0)
-    m_strategyPlugin->setOurKickoff(m_attack == 1);
+    if (m_setOurKickoff) m_setOurKickoff(m_strategyHandle, m_attack);
 
-    // 点球模式 (m_dqdirect=点球方向, m_dqsmd=点球模式)
-    m_strategyPlugin->setPenaltyKickMode(m_dqdirect, m_dqsmd);
+    // 点球模式
+    if (m_setPenaltyKickMode) m_setPenaltyKickMode(m_strategyHandle, m_dqdirect, m_dqsmd);
 
     // 策略选择
-    m_strategyPlugin->selectStrategy(StrategyNum);
-
+    if (m_selectStrategy) m_selectStrategy(m_strategyHandle, StrategyNum);
     // 设置归位参数
     m_strategyPlugin->setParameter("return2pt", m_return2pt ? 1.0 : 0.0);
+
+
 }
 
 void MatchDlg_5vs5::initUI()
@@ -335,7 +389,7 @@ void MatchDlg_5vs5::initUI()
 
 void MatchDlg_5vs5::onButtonStart()
 {
-    if (!m_strategyPlugin) {
+    if (!m_strategyHandle || !m_initStrategy) {
         QMessageBox::warning(this, "错误", "策略插件未加载");
         Debug::get()->print("错误：策略插件未加载");
         return;
@@ -355,7 +409,7 @@ void MatchDlg_5vs5::onButtonStart()
         m_dqdirect = 1;
 
     // 初始化策略
-    m_strategyPlugin->initialize(0);
+    m_initStrategy(m_strategyHandle, 0);
 
     // 应用比赛参数到插件
     applyMatchParameters();
@@ -370,7 +424,7 @@ void MatchDlg_5vs5::onButtonStart()
     if (btnPrepare) {
         btnPrepare->setEnabled(false);
     }
-    
+
     // 归位选项设为false
     m_return2pt = false;
 }
@@ -391,8 +445,8 @@ void MatchDlg_5vs5::onStrategyChanged(int index)
 {
     StrategyNum = index;
 
-    if (m_strategyPlugin) {
-        m_strategyPlugin->selectStrategy(index);
+    if (m_selectStrategy && m_strategyHandle) {
+        m_selectStrategy(m_strategyHandle, index);
     }
 
     qDebug() << "Strategy changed to:" << index;
@@ -401,12 +455,14 @@ void MatchDlg_5vs5::onStrategyChanged(int index)
 
 void MatchDlg_5vs5::onButtonPrepare()
 {
-    if (!m_strategyPlugin) {
+    // 机器人归位
+    if (!m_strategyHandle || !m_parkRobots) {
         QMessageBox::warning(this, "错误", "策略插件未加载");
         Debug::get()->print("错误：策略插件未加载");
         return;
     }
-
+    // 机器人归位
+    m_parkRobots(m_strategyHandle);
     // 根据单双后卫选择策略
     if (radioDan->isChecked()) {
         Debug::get()->print("策略选择：单后卫策略");
@@ -430,9 +486,6 @@ void MatchDlg_5vs5::onButtonPrepare()
     // 应用比赛参数到插件
     applyMatchParameters();
 
-    // 机器人归位
-    m_strategyPlugin->parkRobots();
-
     if (m_pDisplayDlg) {
         m_pDisplayDlg->ShowInitGame();
     }
@@ -443,20 +496,21 @@ void MatchDlg_5vs5::onButtonPrepare()
 
 void MatchDlg_5vs5::onButtonStrategyParam()
 {
-    QString exePath = "e:/bishe/策略/StrategyParamConfig.exe";
-    
+    QString exePath = "C:/Users/2dou/source/repos/STRATEGY/x64/Debug/ParameterDialog.exe";
+
     if (!QFile::exists(exePath)) {
         QMessageBox::warning(this, "错误", "策略参数配置程序不存在\n路径：" + exePath);
         Debug::get()->print("错误：策略参数配置程序不存在");
         return;
     }
-    
-    QProcess *process = new QProcess(this);
+
+    QProcess* process = new QProcess(this);
     bool started = process->startDetached(exePath);
-    
+
     if (started) {
         Debug::get()->print("策略参数配置程序已启动");
-    } else {
+    }
+    else {
         QMessageBox::warning(this, "错误", "无法启动策略参数配置程序");
         Debug::get()->print("错误：无法启动策略参数配置程序");
     }

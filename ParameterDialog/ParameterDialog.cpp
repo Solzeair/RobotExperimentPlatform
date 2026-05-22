@@ -10,6 +10,8 @@
 #include <QDoubleSpinBox>
 #include <QLabel>
 #include <iostream>
+#include <cmath>      // isnan, isinf
+#include <algorithm>  // min, max
 /**
  * 构造函数
  * 初始化UI并加载参数列表
@@ -172,12 +174,59 @@ void ParameterDialog::loadParameters() {
  */
 void ParameterDialog::updateTable() {
     if (!m_table || !m_filterEdit) return;
+    // 检查 m_parameters 是否有效
+    try {
+        // 尝试访问 size()，如果 vector 损坏这里就会崩溃
+        size_t paramCount = m_parameters.size();
+        std::cout << "updateTable: m_parameters.size() = " << paramCount << std::endl;
+
+        if (paramCount == 0) {
+            std::cout << "No parameters to display" << std::endl;
+            m_table->setRowCount(0);
+            return;
+        }
+
+        // 检查第一个参数是否有效（通过尝试访问 name）
+        if (paramCount > 0) {
+            std::string firstName = m_parameters[0].name;
+            std::cout << "First parameter name: " << firstName << std::endl;
+        }
+
+    }
+    catch (const std::exception& e) {
+        std::cout << "Exception accessing m_parameters: " << e.what() << std::endl;
+        m_table->setRowCount(0);
+        return;
+    }
+    catch (...) {
+        std::cout << "Unknown exception accessing m_parameters" << std::endl;
+        m_table->setRowCount(0);
+        return;
+    }
+
+    // 断开所有 SpinBox 的旧连接
+    for (int row = 0; row < m_table->rowCount(); row++) {
+        QDoubleSpinBox* oldSpinBox = qobject_cast<QDoubleSpinBox*>(m_table->cellWidget(row, 1));
+        if (oldSpinBox) {
+            oldSpinBox->disconnect(this);
+        }
+    }
 
     QString filter = m_filterEdit->text().toLower();  // 获取过滤文本（转小写）
 
     // 计算符合条件的参数数量
     int visibleCount = 0;
-    for (const auto& param : m_parameters) {
+    for (size_t i = 0; i < m_parameters.size(); i++) {
+        const auto& param = m_parameters[i];
+        // 安全地获取参数名
+        std::string paramNameStr;
+        try {
+            paramNameStr = param.name;
+        }
+        catch (...) {
+            std::cout << "Failed to get name for parameter at index " << i << std::endl;
+            continue;
+        }
         if (filter.isEmpty() || QString::fromStdString(param.name).toLower().contains(filter)) {
             visibleCount++;
         }
@@ -187,34 +236,81 @@ void ParameterDialog::updateTable() {
     m_table->setRowCount(visibleCount);
 
     int row = 0;
-    for (auto& param : m_parameters) {
-        // 跳过不符合过滤条件的参数
-        if (!filter.isEmpty() && !QString::fromStdString(param.name).toLower().contains(filter)) {
+    for (size_t i = 0; i < m_parameters.size(); i++) {
+        auto& param = m_parameters[i];
+
+        // 安全地获取参数名
+        std::string paramNameStr;
+        try {
+            paramNameStr = param.name;
+        }
+        catch (...) {
+            std::cout << "Skipping parameter at index " << i << " - cannot get name" << std::endl;
             continue;
         }
 
-        // 列0: 参数名（只读）
-        QTableWidgetItem* nameItem = new QTableWidgetItem(QString::fromStdString(param.name));
-        nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);  // 设置为不可编辑
-        m_table->setItem(row, 0, nameItem);
+        QString paramName = QString::fromStdString(paramNameStr);
 
-        double currentValue = param.value;  // 默认值
-        if (m_getParameter && m_strategy) {
-            currentValue = m_getParameter(m_strategy, param.name.c_str());
-            param.value = currentValue;  // 同步更新存储
+        if (!filter.isEmpty() && !paramName.toLower().contains(filter)) {
+            continue;
         }
-        // =================================================
 
-        // 列1: 当前值（使用SpinBox编辑）
+        // 安全检查：如果参数名为空，跳过
+        if (paramName.isEmpty()) {
+            std::cout << "Skipping parameter at index " << i << " - empty name" << std::endl;
+            continue;
+        }
+        std::cout << "Adding parameter: " << paramNameStr << std::endl;
+
+
+        // 列0: 参数名
+        QTableWidgetItem* nameItem = new QTableWidgetItem(paramName);
+        nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
+        m_table->setItem(row, 0, nameItem);
+        // 获取当前值
+        double currentValue = param.value;
+        if (m_getParameter && m_strategy) {
+            try {
+                currentValue = m_getParameter(m_strategy, paramNameStr.c_str());
+
+                // 检查返回值是否有效
+                if (std::isnan(currentValue) || std::isinf(currentValue)) {
+                    std::cout << "Warning: Invalid value for " << paramNameStr << ": " << currentValue << std::endl;
+                    currentValue = (param.minVal + param.maxVal) / 2;
+                }
+
+                // 限制在范围内
+                currentValue = std::max(param.minVal, std::min(param.maxVal, currentValue));
+                param.value = currentValue;
+            }
+            catch (...) {
+                std::cout << "Exception calling getParameter for " << paramNameStr << std::endl;
+            }
+        }
+
+   // 列1: SpinBox - 使用 blockSignals 避免触发信号
         QDoubleSpinBox* spinBox = new QDoubleSpinBox();
         spinBox->setRange(param.minVal, param.maxVal);
         spinBox->setSingleStep(param.step);
         spinBox->setDecimals(3);
+        // 临时阻塞信号，避免在设置值时触发 onChange
+        spinBox->blockSignals(true);
         spinBox->setValue(currentValue);  // ← 使用真实值
+        spinBox->blockSignals(false);
         spinBox->setToolTip(QString::fromStdString(param.description));
-
+        // 使用值捕获，避免引用问题
+        std::string paramNameCopy = paramNameStr;
+        // 使用 lambda 捕获 row 和参数名，避免通过 sender() 查找
         connect(spinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, &ParameterDialog::onSpinBoxChanged);
+            this, [this, row, paramName](double value) {
+                // 更新对应参数的值
+                for (auto& p : m_parameters) {
+                    if (p.name == paramName.toStdString()) {
+                        p.value = value;
+                        break;
+                    }
+                }
+            });
         m_table->setCellWidget(row, 1, spinBox);
 
         // 列2: 最小值（只读）

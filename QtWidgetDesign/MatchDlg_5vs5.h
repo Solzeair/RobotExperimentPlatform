@@ -1,4 +1,4 @@
-/*
+﻿/*
 * 5v5比赛对话框头文件
 * 写作人 李青
 * 功能 5v5比赛控制面板的类，包含各种比赛规则单选框、策略选择和比赛状态控制方法。
@@ -53,6 +53,30 @@ private slots:
 
 private:
     void initUI();
+    // DLL 函数指针类型定义
+    typedef void* (*CreateStrategyFunc)();
+    typedef void (*DestroyStrategyFunc)(void*);
+    typedef void (*InitializeStrategyFunc)(void*, int);
+    typedef void (*SetFormationTypeFunc)(void*, int);
+    typedef void (*SetOurGoalOnRightFunc)(void*, int);
+    typedef void (*SetOurKickoffFunc)(void*, int);
+    typedef void (*SetPenaltyKickModeFunc)(void*, int, int);
+    typedef void (*SelectStrategyFunc)(void*, int);
+    typedef void (*SetParameterFunc)(void*, const char*, double);
+    typedef void (*GetParameterFunc)(void*, const char*);
+    typedef void (*ParkRobotsFunc)(void*);
+
+    // 策略句柄和函数指针
+    void* m_strategyHandle;
+
+    InitializeStrategyFunc m_initStrategy;
+    SetFormationTypeFunc m_setFormation;
+    SetOurGoalOnRightFunc m_setOurGoalOnRight;
+    SetOurKickoffFunc m_setOurKickoff;
+    SetPenaltyKickModeFunc m_setPenaltyKickMode;
+    SelectStrategyFunc m_selectStrategy;
+    SetParameterFunc m_setParameter;
+    ParkRobotsFunc m_parkRobots;
 
 private:
     // --- 控件部件 ---
