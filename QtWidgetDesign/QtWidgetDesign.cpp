@@ -14,7 +14,7 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     : CFrameLessWidgetBase(parent)
 {
     // 保持主窗口的宽度不变，只减小高度
-    this->setMinimumSize(1200, 700);
+    this->setMinimumSize(1400, 700);
 
     // 将窗口移动到屏幕正中央
     QScreen* screen = QGuiApplication::primaryScreen();

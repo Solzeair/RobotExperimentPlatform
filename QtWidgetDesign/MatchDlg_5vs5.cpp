@@ -38,9 +38,7 @@ MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
     , m_dqDirectGroup(nullptr)
     , m_goalkeeperGroup(nullptr)
     , btnPrepare(nullptr)
-    , btnExchangeRole(nullptr)
-    , lineEditNewCar(nullptr)
-    , lineEditExchangeRole(nullptr)
+    , btnStrategyParam(nullptr)
 {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
@@ -292,33 +290,18 @@ void MatchDlg_5vs5::initUI()
     strategyLayout->addWidget(comboStrategy);
     controlLayout->addLayout(strategyLayout);
 
-    // 角色替换
-    QHBoxLayout *roleExchangeLayout = new QHBoxLayout();
-    QLabel *roleExchangeLabel = new QLabel("角色替换", this);
-    roleExchangeLabel->setFont(font);
-    QLabel *newCarLabel = new QLabel("新车", this);
-    newCarLabel->setFont(font);
-    lineEditNewCar = new QLineEdit(this);
-    lineEditNewCar->setFont(font);
-    lineEditNewCar->setText("1");
-    lineEditNewCar->setFixedWidth(50);
-    QLabel *exchangeRoleLabel = new QLabel("替换角色", this);
-    exchangeRoleLabel->setFont(font);
-    lineEditExchangeRole = new QLineEdit(this);
-    lineEditExchangeRole->setFont(font);
-    lineEditExchangeRole->setText("1");
-    lineEditExchangeRole->setFixedWidth(50);
-    btnExchangeRole = new QPushButton("替换", this);
-    btnExchangeRole->setFont(font);
-    btnExchangeRole->setFixedWidth(60);
+    // 策略参数修改
+    QHBoxLayout *strategyParamLayout = new QHBoxLayout();
+    QLabel *strategyParamLabel = new QLabel("策略参数修改", this);
+    strategyParamLabel->setFont(font);
+    btnStrategyParam = new QPushButton("打开参数配置", this);
+    btnStrategyParam->setFont(font);
+    btnStrategyParam->setFixedWidth(120);
 
-    roleExchangeLayout->addWidget(roleExchangeLabel);
-    roleExchangeLayout->addWidget(newCarLabel);
-    roleExchangeLayout->addWidget(lineEditNewCar);
-    roleExchangeLayout->addWidget(exchangeRoleLabel);
-    roleExchangeLayout->addWidget(lineEditExchangeRole);
-    roleExchangeLayout->addWidget(btnExchangeRole);
-    controlLayout->addLayout(roleExchangeLayout);
+    strategyParamLayout->addWidget(strategyParamLabel);
+    strategyParamLayout->addWidget(btnStrategyParam);
+    strategyParamLayout->addStretch();
+    controlLayout->addLayout(strategyParamLayout);
 
     // 在 controlLayout 底部添加弹性空间，让内容在垂直方向上铺满
     controlLayout->addStretch();
@@ -331,7 +314,7 @@ void MatchDlg_5vs5::initUI()
     connect(btnStopMatch, SIGNAL(clicked()), this, SLOT(onButtonStop()));
     connect(comboStrategy, SIGNAL(currentIndexChanged(int)), this, SLOT(onStrategyChanged(int)));
     connect(btnPrepare, SIGNAL(clicked()), this, SLOT(onButtonPrepare()));
-    connect(btnExchangeRole, SIGNAL(clicked()), this, SLOT(onButtonExchangeRole()));
+    connect(btnStrategyParam, SIGNAL(clicked()), this, SLOT(onButtonStrategyParam()));
 
     // 连接单选按钮
     connect(radioDan, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
@@ -458,31 +441,25 @@ void MatchDlg_5vs5::onButtonPrepare()
     Debug::get()->print("初始预备：机器人已归位，比赛准备就绪");
 }
 
-void MatchDlg_5vs5::onButtonExchangeRole()
+void MatchDlg_5vs5::onButtonStrategyParam()
 {
-    if (!lineEditNewCar || !lineEditExchangeRole) {
-        Debug::get()->print("错误：找不到输入控件");
+    QString exePath = "e:/bishe/策略/StrategyParamConfig.exe";
+    
+    if (!QFile::exists(exePath)) {
+        QMessageBox::warning(this, "错误", "策略参数配置程序不存在\n路径：" + exePath);
+        Debug::get()->print("错误：策略参数配置程序不存在");
         return;
     }
     
-    int newCar = lineEditNewCar->text().toInt();
-    int exchangeRole = lineEditExchangeRole->text().toInt();
+    QProcess *process = new QProcess(this);
+    bool started = process->startDetached(exePath);
     
-    // 验证输入
-    if (newCar < 1 || newCar > 5 || exchangeRole < 1 || exchangeRole > 5) {
-        QMessageBox::warning(this, "错误", "输入值无效，请输入1-5之间的数字");
-        Debug::get()->print("错误：角色替换输入值无效");
-        return;
+    if (started) {
+        Debug::get()->print("策略参数配置程序已启动");
+    } else {
+        QMessageBox::warning(this, "错误", "无法启动策略参数配置程序");
+        Debug::get()->print("错误：无法启动策略参数配置程序");
     }
-    
-    // 执行角色替换
-    m_exchangerobot1 = newCar;
-    m_exchangerobot2 = exchangeRole;
-    
-    // 显示提示
-    QString message = QString("角色替换：将新车 %1 替换为角色 %2").arg(newCar).arg(exchangeRole);
-    Debug::get()->print(message);
-    QMessageBox::information(this, "角色替换", message);
 }
 void MatchDlg_5vs5::onRadioButtonClicked()
 {

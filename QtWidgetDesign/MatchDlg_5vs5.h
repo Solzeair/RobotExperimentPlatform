@@ -19,6 +19,8 @@
 #include <QTimer>
 #include <QElapsedTimer>
 #include <QButtonGroup>
+#include <QProcess>
+#include <QFile>
 
 // 包含策略插件接口
 #include "StrategyPluginInterface.h"
@@ -46,7 +48,7 @@ private slots:
     void onButtonStop();
     void onStrategyChanged(int index);
     void onButtonPrepare();
-    void onButtonExchangeRole();
+    void onButtonStrategyParam();
     void onRadioButtonClicked();
 
 private:
@@ -73,9 +75,7 @@ private:
     QPushButton* btnPauseMatch;
     QPushButton* btnStopMatch;
     QPushButton* btnResetPosition;
-    QPushButton* btnExchangeRole;
-    QLineEdit* lineEditNewCar;
-    QLineEdit* lineEditExchangeRole;
+    QPushButton* btnStrategyParam;
     QComboBox* comboStrategy;
 
     // --- ButtonGroup for exclusive selection ---
