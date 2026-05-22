@@ -293,6 +293,9 @@ void ColorDlg::initUI()
 
     mainLayout->addLayout(controlLayout);
 
+    // 添加弹性空间，使内容在垂直方向上自适应
+    mainLayout->addStretch();
+
     // 连接信号槽
     connect(colorTestButton, SIGNAL(clicked()), this, SLOT(onButtonColorTest()));
     connect(runTestButton, SIGNAL(clicked()), this, SLOT(onButtonRunTest()));

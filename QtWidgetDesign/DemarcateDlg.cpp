@@ -206,6 +206,27 @@ void DemarcateDlg::initUI()
     connect(btnFlush, SIGNAL(clicked()), this, SLOT(onButtonFlush()));
     connect(btnShowRes, SIGNAL(clicked()), this, SLOT(onButtonShowRes()));
 
+    // ── 如果 ground.dat 已存在则自动加载 ───────────────────────
+    onButtonLoad();
+
+    // ── 尝试自动加载点模板 ────────────────────────────────────
+    tryAutoLoad();
+
+    // 添加弹性空间，使内容在垂直方向上自适应
+    mainLayout->addStretch();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 绘制事件 – 绘制结果预览图像
+// ═══════════════════════════════════════════════════════════════
+
+void DemarcateDlg::paintEvent(QPaintEvent* event)
+{
+    Q_UNUSED(event);
+    QPainter painter(this);
+    if (!m_resultImage.isNull()) {
+        painter.drawImage(resultLabel->geometry(), m_resultImage);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════

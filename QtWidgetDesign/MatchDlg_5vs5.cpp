@@ -109,7 +109,6 @@ void MatchDlg_5vs5::initUI()
     QLabel *titleLabel = new QLabel("5vs5比赛控制", this);
     titleLabel->setFont(font);
     controlLayout->addWidget(titleLabel);
-    controlLayout->setAlignment(titleLabel, Qt::AlignTop);
 
     // 单双后卫
     QHBoxLayout *danShuangLayout = new QHBoxLayout();
@@ -321,7 +320,11 @@ void MatchDlg_5vs5::initUI()
     roleExchangeLayout->addWidget(btnExchangeRole);
     controlLayout->addLayout(roleExchangeLayout);
 
-    mainLayout->addLayout(controlLayout);
+    // 在 controlLayout 底部添加弹性空间，让内容在垂直方向上铺满
+    controlLayout->addStretch();
+
+    // 将控制区域添加到主布局，并设置 stretch 因子使其填满剩余空间
+    mainLayout->addLayout(controlLayout, 1);  // stretch 因子为 1
 
     // 连接信号槽
     connect(btnStartMatch, SIGNAL(clicked()), this, SLOT(onButtonStart()));

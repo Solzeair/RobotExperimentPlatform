@@ -210,32 +210,45 @@ void DisplayDlg::initUI()
 // Grab one frame, display it, and overlay any calibration point markers.
 void DisplayDlg::ShowSingle()
 {
-    GrabSingle();
+    Camera* pCamera = Camera::GetInstance();
 
-    // Build display pixmap from the single-grab buffer
-    QImage image(m_pDispSingle, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
-    QPixmap pixmap = QPixmap::fromImage(image);
-
-    // Overlay calibration point markers (red cross, label)
-    if (!m_calibPoints.empty()) {
-        QPainter p(&pixmap);
-        p.setPen(QPen(Qt::red, 2));
-        QFont f;
-        f.setPointSize(8);
-        p.setFont(f);
-        for (int i = 0; i < (int)m_calibPoints.size(); ++i) {
-            const QPoint& pt = m_calibPoints[i];
-            // Cross arms ±6 px
-            p.drawLine(pt.x() - 6, pt.y(), pt.x() + 6, pt.y());
-            p.drawLine(pt.x(), pt.y() - 6, pt.x(), pt.y() + 6);
-            // Index label (1-based)
-            p.drawText(pt.x() + 4, pt.y() - 4, QString::number(i + 1));
-        }
+    // 1. 确保摄像头已打开且在抓取 (来自 ui3 的健壮性保障)
+    if (!pCamera->IsOpen()) {
+        pCamera->Open();
+    }
+    if (!pCamera->IsGrabbing()) {
+        pCamera->StartGrabbing();
     }
 
-    displayLabel->setPixmap(pixmap);
-}
+    // 2. 直接从流中抓取当前帧
+    if (pCamera->RetrieveResult(m_pDispSingle)) {
 
+        // 3. 构建初始的显示图像
+        QImage image(m_pDispSingle, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
+        QPixmap pixmap = QPixmap::fromImage(image);
+
+        // 4. 叠加标定点红十字和标签 (来自 HEAD 的标定渲染逻辑)
+        if (!m_calibPoints.empty()) {
+            QPainter p(&pixmap);
+            p.setPen(QPen(Qt::red, 2));
+            QFont f;
+            f.setPointSize(8);
+            p.setFont(f);
+
+            for (int i = 0; i < (int)m_calibPoints.size(); ++i) {
+                const QPoint& pt = m_calibPoints[i];
+                // Cross arms ±6 px
+                p.drawLine(pt.x() - 6, pt.y(), pt.x() + 6, pt.y());
+                p.drawLine(pt.x(), pt.y() - 6, pt.x(), pt.y() + 6);
+                // Index label (1-based)
+                p.drawText(pt.x() + 4, pt.y() - 4, QString::number(i + 1));
+            }
+        }
+
+        // 5. 将最终带有标定信息的图像渲染到界面上
+        displayLabel->setPixmap(pixmap);
+    }
+}
 //功能：启动定时器，持续从摄像头获取图像并显示
 
 void DisplayDlg::ShowDynamic()
