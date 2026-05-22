@@ -66,6 +66,7 @@ x86/
 *.log
 *.idb
 *.pdb
+*.vcxproj.user
 
 # Qt 自动生成文件
 moc_*.cpp
