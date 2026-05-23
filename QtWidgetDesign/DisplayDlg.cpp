@@ -26,6 +26,119 @@ static unsigned char* pBuffer = nullptr;
 // 机器人形状坐标
 int robot_xy[361][12][2];             //机器人方向图像关键点坐标
 
+// ========================================================================
+// OverlayWidget 实现 - 透明覆盖层控件
+// ========================================================================
+// 设计说明：
+//   此控件叠在 displayLabel（摄像头画面）上方，用于采色模式下
+//   绘制鼠标框选的红框矩形。采用透明背景 + XOR 组合模式，
+//   实现与 MFC 的 CDC::SetROP2(R2_NOTXORPEN) 等价的视觉效果。
+//
+//   与 MFC 的对应关系：
+//     MFC: CDisplayDlg::OnLButtonDown / OnMouseMove 中
+//          pDC = m_display.GetDC(); pDC->SetROP2(R2_NOTXORPEN);
+//     Qt:  OverlayWidget::mousePressEvent / mouseMoveEvent 中
+//          QPainter + RasterOp_SourceXorDestination
+// ========================================================================
+
+// 构造函数 - 初始化覆盖层控件
+// 参数 parent: 父控件（DisplayDlg），覆盖层将叠在 displayLabel 上方
+OverlayWidget::OverlayWidget(QWidget* parent)
+    : QWidget(parent)
+    , m_hasSelection(false)
+{
+    // 设置透明背景，使覆盖层不会遮挡底层的摄像头画面
+    setStyleSheet("background: transparent;");
+    // 确保覆盖层可以接收鼠标事件（默认 true，显式设置以防万一）
+    setAttribute(Qt::WA_TransparentForMouseEvents, false);
+    // 启用鼠标追踪，mouseMoveEvent 在按下状态下才会触发
+    // （实际拖拽时由 mousePressEvent 中的按钮状态控制）
+}
+
+// 设置框选矩形并触发重绘
+// 参数 r: 矩形区域（覆盖层控件坐标系，与 displayLabel 的图像坐标对齐）
+// 说明：外部调用此方法可以直接设置矩形，当前由 mousePressEvent/mouseMoveEvent 内部使用
+void OverlayWidget::setSelectionRect(const QRect& r)
+{
+    m_selectionRect = r;
+    m_hasSelection = true;
+    update();  // 触发 paintEvent 重绘
+}
+
+// 清除框选矩形并触发重绘
+// 调用时机：切换标签页或重新开始框选时
+void OverlayWidget::clearSelectionRect()
+{
+    m_hasSelection = false;
+    m_selectionRect = QRect();
+    update();  // 触发 paintEvent 重绘（paintEvent 中 hasSelection=false 会跳过绘制）
+}
+
+// 重绘事件 - 用 XOR 模式绘制红色矩形线框
+// 触发时机：每次调用 update() 或窗口系统要求重绘时自动调用
+// 绘制原理：
+//   使用 RasterOp_SourceXorDestination 组合模式，红色线条与背景像素
+//   进行异或运算，产生高对比度的可见框线（类似 MFC 的 R2_NOTXORPEN）。
+//   由于覆盖层背景是透明的，XOR 操作直接作用在底层摄像头画面的像素上，
+//   视觉效果与 MFC 完全一致。
+void OverlayWidget::paintEvent(QPaintEvent* event)
+{
+    Q_UNUSED(event);
+
+    // 没有有效框选时不需要绘制
+    if (!m_hasSelection)
+        return;
+
+    QPainter painter(this);
+    // 使用 SourceOver 模式直接绘制深红色线框，颜色不随背景变化
+    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    painter.setPen(QPen(QColor(200, 0, 0), 3));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRect(m_selectionRect);
+}
+
+// 鼠标按下事件 - 记录框选起点
+// 触发时机：用户在覆盖层上按下鼠标左键
+// 对应 MFC：CDisplayDlg::OnLButtonDown 中 COLOR_SET 分支
+//   m_Rect.left = pt.x; m_Rect.top = pt.y;
+void OverlayWidget::mousePressEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        // 记录框选起点，初始化一个 1×1 的矩形
+        // 与 MFC 的 m_Rect.right = pt.x + 1; m_Rect.bottom = pt.y + 1 一致
+        m_selectionRect = QRect(event->pos(), QSize(1, 1));
+        m_hasSelection = true;
+        update();  // 触发 paintEvent，画出初始的 1×1 矩形（实际不可见）
+    }
+}
+
+// 鼠标拖动事件 - 更新矩形终点并重绘
+// 触发时机：用户按住左键拖动鼠标时
+// 对应 MFC：CDisplayDlg::OnMouseMove 中 COLOR_SET 分支
+//
+// MFC 的做法（两步）：
+//   1. pDC->SetROP2(R2_NOTXORPEN);
+//      画旧矩形 → XOR 擦除（与背景异或还原）
+//   2. 更新 m_Rect.right/bottom
+//      画新矩形 → XOR 显示
+//
+// Qt 的做法（一步）：
+//   直接更新 m_selectionRect 的终点，然后调用 update()。
+//   paintEvent 每次从干净的覆盖层状态重画一个 XOR 矩形，
+//   不需要手动"擦旧"，视觉效果等同于 MFC 的两步操作。
+//   这是因为 Qt 的 update() 会先清除 widget 内容再调用 paintEvent，
+//   而 MFC 的 GDI 绘制是持久的，需要手动 XOR 擦除。
+void OverlayWidget::mouseMoveEvent(QMouseEvent* event)
+{
+    if (event->buttons() & Qt::LeftButton) {
+        // 更新矩形终点（normalized 确保 left<right, top<bottom，
+        // 即使用户从右下往左上拖也能正确显示）
+        m_selectionRect.setBottomRight(event->pos());
+        m_selectionRect = m_selectionRect.normalized();
+        update();  // 触发 paintEvent 重绘
+    }
+}
+
 //功能：初始化显示区域，设置图像数据、机器人形状坐标和颜色转换表
 
 DisplayDlg::DisplayDlg(QWidget* parent)
@@ -44,6 +157,7 @@ DisplayDlg::DisplayDlg(QWidget* parent)
     , m_BalLo(false)
     , m_fps(0.0)
     , m_Length(7.5)
+    , m_overlayWidget(nullptr)
 {
     // 初始化图像数据
     m_pDispBitmap = new unsigned char[m_ImageSize.width() * m_ImageSize.height() * 3]();
@@ -180,6 +294,22 @@ void DisplayDlg::initUI()
     mainLayout->addWidget(fpsLabel);
     mainLayout->addWidget(displayLabel);
 
+    // ── 创建采色模式的透明覆盖层 ─────────────────────────────────────────
+    // 覆盖层作为 displayLabel 的子控件，与 displayLabel 完全重叠。
+    // 坐标系说明：
+    //   displayLabel 的坐标范围为 (0,0) ~ (DISPLAY_W-1, DISPLAY_H-1)
+    //   由于 overlay 是 displayLabel 的子控件，overlay 的本地坐标
+    //   直接对应 displayLabel 中的图像坐标，无需额外的坐标转换。
+    //   这与 MFC 中 m_display.ScreenToClient(&pt) 的效果一致。
+    //
+    // 对应 MFC 代码：
+    //   CDisplayDlg::OnLButtonDown / OnMouseMove 中
+    //   pDC = m_display.GetDC() → 直接在 m_display 上画红框
+    m_overlayWidget = new OverlayWidget(displayLabel);
+    m_overlayWidget->setFixedSize(DISPLAY_W, DISPLAY_H);
+    m_overlayWidget->move(0, 0);  // 与 displayLabel 左上角对齐
+    m_overlayWidget->hide();       // 初始隐藏，仅在 COLOR_SET 模式下显示
+
     // 初始化定时器
     m_grabTimer = new QTimer(this);
     connect(m_grabTimer, &QTimer::timeout, this, &DisplayDlg::onTimer);
@@ -313,7 +443,7 @@ void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
     unsigned char* pOrigin = m_pDispSingle;
     unsigned char* pTest = m_pTestBitmap;
 
-    int i, j, R, G, B, H, S, I;
+    int i, j, R, G, B, H = 0, S, I;
     if (HSI[object][1] > HSI[object][0])
     {
         for (j = 0; j < DISPLAY_H; j++)
@@ -368,7 +498,7 @@ void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
     QImage image(m_pTestBitmap, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
     QPixmap pixmap = QPixmap::fromImage(image);
     displayLabel->setPixmap(pixmap);
-    delete m_pTestBitmap;
+    delete[] m_pTestBitmap;
 }
 
 // 功能：启动测试模式，定时获取并处理图像
@@ -477,9 +607,52 @@ void DisplayDlg::Stop()
 
 //功能：设置当前操作状态
 
+// 功能：设置当前操作状态，并控制覆盖层的显示/隐藏
+// 对应 MFC：CDisplayDlg::SelectSetStatus(SET_STATUS s) { m_setStatus = s; }
+//
+// MFC 版本只需设置状态标志，因为 GDI 绘制是在同一个 DC 上直接操作。
+// Qt 版本需要额外管理 OverlayWidget 的可见性：
+//   - COLOR_SET：显示覆盖层，使用户可以在上面框选颜色区域
+//   - 其他状态：隐藏覆盖层，避免干扰其他模式的鼠标交互
+
 void DisplayDlg::SelectSetStatus(SET_STATUS s)
 {
     m_setStatus = s;
+
+    // 控制覆盖层可见性
+    if (m_overlayWidget) {
+        if (s == SET_STATUS::COLOR_SET) {
+            // 进入采色框选模式：显示覆盖层，清除之前的框选
+            m_overlayWidget->clearSelectionRect();
+            m_overlayWidget->show();
+            // 提升覆盖层到最前面，确保能接收鼠标事件
+            m_overlayWidget->raise();
+        }
+        else {
+            // 离开采色框选模式：隐藏覆盖层
+            m_overlayWidget->hide();
+        }
+    }
+}
+
+// 功能：获取当前框选矩形（图像坐标）
+// 供 ColorDlg::onZoom() 和 ColorDlg::onSample() 调用，读取用户框选的颜色区域。
+//
+// 坐标系说明：
+//   OverlayWidget 是 displayLabel 的子控件，其本地坐标直接对应图像坐标。
+//   因此 overlay 的 selectionRect 无需任何坐标转换即可作为图像坐标使用。
+//   （对比旧版本：需要手动减去 fpsLabel 的高度 32px 来转换坐标）
+//
+// 对应 MFC：CDisplayDlg::GetRect() const { return m_Rect; }
+
+QRect DisplayDlg::GetRect() const
+{
+    if (m_overlayWidget && m_overlayWidget->hasSelection()) {
+        // 从覆盖层获取框选矩形（已是图像坐标，无需转换）
+        return m_overlayWidget->getSelectionRect();
+    }
+    // 后备：返回 DisplayDlg 自身的 m_Rect（BORDER_SET 等模式使用）
+    return m_Rect;
 }
 
 // 功能：绘制足球场背景和机器人
@@ -520,21 +693,14 @@ void DisplayDlg::ClearBallTrail()
     m_ballTrail.clear();
 }
 
-// 功能：处理颜色设置时的鼠标拖拽操作
+// 功能：处理鼠标拖拽操作
+// 注意：COLOR_SET 框选逻辑已移至 OverlayWidget::mouseMoveEvent。
+// 此处保留空函数，将来如 BORDER_SET 模式需要拖拽交互可在此扩展。
 
 void DisplayDlg::mouseMoveEvent(QMouseEvent* event)
 {
-    if (m_setStatus == SET_STATUS::COLOR_SET && (event->buttons() & Qt::LeftButton)) {
-        // 转换为 displayLabel 坐标（减去上方 fpsLabel 高度）
-        QPoint imgPos = event->pos() - QPoint(0, fpsLabel->height());
-        QPainter painter(displayLabel);
-        painter.setPen(QPen(Qt::red, 1));
-        painter.setCompositionMode(QPainter::RasterOp_SourceXorDestination);
-        painter.drawRect(m_Rect);
-        m_Rect.setRight(imgPos.x());
-        m_Rect.setBottom(imgPos.y());
-        painter.drawRect(m_Rect);
-    }
+    Q_UNUSED(event);
+    // 目前无 DisplayDlg 级别的拖拽逻辑
 }
 
 //功能：处理颜色设置时的鼠标按下操作
@@ -580,18 +746,10 @@ void DisplayDlg::mousePressEvent(QMouseEvent* event)
         displayLabel->setPixmap(pixmap);
 
     }
-    else if (m_setStatus == SET_STATUS::COLOR_SET) {
-        // 转换为 displayLabel 坐标（减去上方 fpsLabel 高度 32px）
-        QPoint imgPos = pos - QPoint(0, fpsLabel->height());
-        m_Rect.setLeft(imgPos.x());
-        m_Rect.setTop(imgPos.y());
-        m_Rect.setRight(imgPos.x() + 1);
-        m_Rect.setBottom(imgPos.y() + 1);
-        QPainter painter(displayLabel);
-        painter.setPen(QPen(Qt::red, 1));
-        painter.setCompositionMode(QPainter::RasterOp_SourceXorDestination);
-        painter.drawRect(m_Rect);
-    }
+    // 注意：COLOR_SET 分支已移除，框选功能现在由 OverlayWidget 接管。
+    // OverlayWidget 作为 displayLabel 的子控件，直接处理鼠标事件，
+    // 无需在 DisplayDlg 中进行坐标转换（fpsLabel 偏移等）。
+    // 参见 OverlayWidget::mousePressEvent 和 OverlayWidget::mouseMoveEvent。
 }
 
 //功能：定时获取并处理图像
@@ -968,7 +1126,7 @@ bool DisplayDlg::JudgePixel(int object, int H, int S, int I)
 int DisplayDlg::JudgeColor(int a, int b, int c)
 {
     int obj = -1;
-    int H, S, I;
+    int H = 0, S, I;
     int minobj = 100;
     ColorDlg* pColorDlg = ColorDlg::getInstance();
     const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
@@ -1029,78 +1187,102 @@ bool DisplayDlg::FindPixel(int object, int m, int n, unsigned char* P)
     return JudgePixel(object, H, S, I);
 }
 
-// 功能：使用LUT搜索并识别目标对象
+// 功能：扫描线泛洪填充搜索并识别目标对象
+// 严格参考 MFC IdentifySearchLUT（E:\bot\RobotFootball\DisplayDlg.cpp:856）
+// 改动：适配 Qt 的 top-down 缓冲区布局（3 字节/像素 unsigned char*）
 
 bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart)
 {
-    int x, y;
-    int startindex, endindex;
-    int count = 0;
-    int color = 0;
+    int sum = 0, sumx = 0, sumy = 0;
+    int x, y, y1;
+    bool spanLeft, spanRight;
     int m = m_ImageSize.width();
     int n = m_ImageSize.height();
+
     emptyStack();
-    startindex = Starty * m + Startx;
-    endindex = startindex;
-    if (pStart[startindex] != 0)
-        return false;
-    push(Startx, Starty);
+    x = Startx;
+    y = Starty;
+    m_xLeft = m_xRight = x;
+    m_yTop = m_yBottom = y;
+
+    if (!push(x, y)) return false;
+
+    // 扫描线泛洪填充（与 MFC 完全一致的算法）
     while (pop(x, y))
     {
-        startindex = y * m + x;
-        pStart[startindex] = 255;
-        count++;
+        // 从当前点向上扫描找色块顶部
+        y1 = y;
+        while (y1 >= 0) {
+            if (!FindPixel(tab, x, y1, pStart))
+                break;
+            y1--;
+        }
+        y1++;  // 回退到第一个匹配像素
 
-        if (x < m_xLeft + 4)
-        {
-            m_xLeft = x - 4;
-            color++;
-        }
-        if (x > m_xRight - 4)
-        {
-            m_xRight = x + 4;
-            color++;
-        }
-        if (y < m_yTop + 4)
-        {
-            m_yTop = y - 4;
-            color++;
-        }
-        if (y > m_yBottom - 4)
-        {
-            m_yBottom = y + 4;
-            color++;
-        }
+        spanLeft = false;
+        spanRight = false;
 
-        if (x > 0 && pStart[startindex - 1] == 0 && FindPixel(tab, x - 1, y, pStart))
+        // 从顶部向下扫描整列
+        while (y1 < n)
         {
-            push(x - 1, y);
-            pStart[startindex - 1] = 254;
-        }
-        if (x < m - 1 && pStart[startindex + 1] == 0 && FindPixel(tab, x + 1, y, pStart))
-        {
-            push(x + 1, y);
-            pStart[startindex + 1] = 254;
-        }
-        if (y > 0 && pStart[startindex - m] == 0 && FindPixel(tab, x, y - 1, pStart))
-        {
-            push(x, y - 1);
-            pStart[startindex - m] = 254;
-        }
-        if (y < n - 1 && pStart[startindex + m] == 0 && FindPixel(tab, x, y + 1, pStart))
-        {
-            push(x, y + 1);
-            pStart[startindex + m] = 254;
+            if (!FindPixel(tab, x, y1, pStart))
+                break;
+
+            // 标记已访问（3 字节全设为灰色，防止 FindPixel 再次匹配）
+            int idx = (y1 * m + x) * 3;
+            pStart[idx]     = 100;  // R
+            pStart[idx + 1] = 100;  // G
+            pStart[idx + 2] = 100;  // B
+
+            sum++;
+            sumx += x;
+            sumy += y1;
+
+            // 更新边界框
+            if (x <= m_xLeft) m_xLeft = x;
+            else if (x >= m_xRight) m_xRight = x;
+            if (y1 <= m_yTop) m_yTop = y1;
+            else if (y1 >= m_yBottom) m_yBottom = y1;
+
+            // 左侧邻居扩展
+            if (!spanLeft && x > 0 && FindPixel(tab, x - 1, y1, pStart))
+            {
+                if (!push(x - 1, y1)) return false;
+                spanLeft = true;
+            }
+            else if (spanLeft && x > 0 && !FindPixel(tab, x - 1, y1, pStart))
+            {
+                spanLeft = false;
+            }
+
+            // 右侧邻居扩展
+            if (!spanRight && x < m - 1 && FindPixel(tab, x + 1, y1, pStart))
+            {
+                if (!push(x + 1, y1)) return false;
+                spanRight = true;
+            }
+            else if (spanRight && x < m - 1 && !FindPixel(tab, x + 1, y1, pStart))
+            {
+                spanRight = false;
+            }
+
+            y1++;
         }
     }
-    if (count < SizeMin || count > SizeMax || color < 2)
+
+    // 尺寸和形状检查（与 MFC 一致）
+    if (sum >= SizeMin && sum <= SizeMax)
     {
-        return false;
-    }
-    else
-    {
+        // 形状检查：宽高差不能超过 20（排除长条形误检）
+        if (abs((m_xRight - m_xLeft) - (m_yBottom - m_yTop)) > 20)
+            return false;
+
+        // 计算色块质心（与 MFC m_Target 一致）
+        m_Target[tab].setX(sumx / sum);
+        m_Target[tab].setY(sumy / sum);
         return true;
     }
+    return false;
 }
 
 //功能：启动目标识别（球 + 己方机器人 + 对手）
@@ -1193,7 +1375,7 @@ void DisplayDlg::IdentifyAll()
         }
     }
 
-    delete m_pTestBitmap;
+    delete[] m_pTestBitmap;
 }
 
 // 功能：过滤足球位置，防止抖动
@@ -1301,7 +1483,7 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
         }
     }
 
-    delete m_pTestBitmap;
+    delete[] m_pTestBitmap;
 }
 
 // 功能：根据位置变化查找机器人ID
@@ -1480,10 +1662,55 @@ bool DisplayDlg::SearchTeam(int tab, int Startx, int Starty, int SizeMin, int Si
     }
 }
 
-//功能：测试识别功能
+// 功能：图像分割模式的动态测试
+// 严格参考 MFC IdentifyTest（E:\bot\RobotFootball\DisplayDlg.cpp:785-833）
+// 黑色背景上用绿色边框+红色十字线标记检测到的色块
 
 void DisplayDlg::IdentifyTest()
 {
+    // 获取当前采色对象
+    ColorDlg* pColorDlg = ColorDlg::getInstance();
+    int object = pColorDlg->currentObject();
+    if (object < 0 || object >= 8) return;
+
+    // 创建黑色背景 QImage
+    QImage segImage(DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
+    segImage.fill(Qt::black);
+
+    // 拷贝 m_pDispBitmap 到临时缓冲区（泛洪填充会修改缓冲区，不能改原图）
+    int bufSize = DISPLAY_W * DISPLAY_H * 3;
+    unsigned char* pTestBitmap = new unsigned char[bufSize];
+    memcpy(pTestBitmap, m_pDispBitmap, bufSize);
+
+    // 每隔 4 像素扫描，检测当前对象颜色
+    int Num = 0;
+    for (int i = 0; i < DISPLAY_W; i += 4) {
+        for (int j = 0; j < DISPLAY_H; j += 4) {
+            if (FindPixel(object, i, j, pTestBitmap)) {
+                if (Num < 20 && IdentifySearchLUT(object, i, j, 30, 300, pTestBitmap)) {
+                    // FindPixel/IdentifySearchLUT 已是 top-down 坐标，无需翻转
+                    QPainter painter(&segImage);
+
+                    // 绿色边框（2px）
+                    painter.setPen(QPen(QColor(0, 255, 0), 2));
+                    painter.setBrush(Qt::NoBrush);
+                    painter.drawRect(m_xLeft, m_yTop,
+                                    m_xRight - m_xLeft, m_yBottom - m_yTop);
+
+                    // 红色十字线（1px）
+                    painter.setPen(QPen(QColor(255, 0, 0), 1));
+                    painter.drawLine(m_xLeft, m_Target[object].y(),
+                                    m_xRight, m_Target[object].y());
+                    painter.drawLine(m_Target[object].x(), m_yTop,
+                                    m_Target[object].x(), m_yBottom);
+                    Num++;
+                }
+            }
+        }
+    }
+
+    delete[] pTestBitmap;
+    displayLabel->setPixmap(QPixmap::fromImage(segImage));
 }
 
 //功能：开始比赛，进行目标识别和绘制

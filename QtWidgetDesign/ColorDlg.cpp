@@ -2,6 +2,7 @@
 #include "Debug.h"
 #include "DisplayDlg.h"   // Needed for ShowColorTest / ShowRunTest / ShowSingle
 #include <QDialog>
+#include <QMessageBox>
 #include <QStyle>
 #include <QMouseEvent>
 #include <cstring>
@@ -158,7 +159,10 @@ void ColorDlg::initUI()
         int id = m_objectGroup->id(btn);
         if (id >= 0) {
             loadThresholdForObject(id);
-            drawHSIRing();
+            // 如果当前处于测试模式，切换对象后自动重新测试
+            if (m_isColorTesting) {
+                onButtonColorTest();
+            }
         }
     });
 
@@ -383,33 +387,39 @@ void ColorDlg::initUI()
     // 初始化 yi[] 数组
     memset(yi, 0, sizeof(yi));
 
-    // 预设 5 个主要对象的默认 HSI 阈值，确保色盘上始终显示灰框
+    // 预设 5 个主要对象的默认 HSI 阈值
     // {H_low, H_high, S_low, S_high, I_low, I_high}  单位: H×10, S%, I(0~255)
+    // H 范围各不相同（对应色环上不同颜色区域），弧线跨度相同（800≈80°）
+    // S 范围统一 30-100（排除灰白），I 范围统一 85-170（亮度条 1/3 到 2/3）
+    // 所有弧线大小形状一致，仅位置不同
     int defaults[5][6] = {
-        {2000, 2800, 30, 100, 20, 240},   // 0 我方队色（蓝色区域）
-        {2700, 3300, 30, 100, 20, 240},   // 1 紫色
-        { 800, 1600, 30, 100, 20, 240},   // 2 绿色
-        { 100,  500, 40, 100, 30, 250},   // 3 球色（橙色区域）
-        { 400,  800, 30, 100, 20, 240},   // 4 敌方队色（黄色区域）
+        {2000, 2800, 30, 100, 85, 170},   // 0 我方队色（蓝色，H≈200°-280°）
+        {2700, 3300, 30, 100, 85, 170},   // 1 紫色（H≈270°-330°）
+        { 800, 1600, 30, 100, 85, 170},   // 2 绿色（H≈80°-160°）
+        { 100,  500, 30, 100, 85, 170},   // 3 球色（橙色，H≈10°-50°）
+        { 400,  800, 30, 100, 85, 170},   // 4 敌方队色（黄色，H≈40°-80°）
     };
     for (int i = 0; i < 5; ++i)
         for (int j = 0; j < 6; ++j)
             HSIThreshold[i][j] = defaults[i][j];
 
-    // 启动时加载已保存的阈值（会覆盖默认值）
-    onButtonLoad();
+    // 启动时始终显示默认值，不自动加载 color.dat
+    // 用户点击"加载"按钮后才从文件覆盖
     loadThresholdForObject(0);
-    m_isSaved = true;  // 初始状态与保存文件一致（或为默认值，也算已保存）
-    drawHSIRing();
-    drawBrightnessHistogram();
+    m_isSaved = true;
 
 }
 
 
 void ColorDlg::onButtonColorTest()
 {
-    UpdateHSIThreshold();
+    // 清除左侧显示区红框，保留右侧预览图像和框选矩形（方便二次框选）
+    m_isColorTesting = true;
     DisplayDlg* dispDlg = this->window()->findChild<DisplayDlg*>();
+    if (dispDlg) {
+        dispDlg->clearOverlaySelection();
+    }
+    UpdateHSIThreshold();
     if (dispDlg) {
         dispDlg->ShowColorTest(HSIThreshold, m_object);
     }
@@ -417,8 +427,13 @@ void ColorDlg::onButtonColorTest()
 
 void ColorDlg::onButtonRunTest()
 {
-    UpdateHSIThreshold();
+    // 清除左侧显示区红框，保留右侧预览图像和框选矩形（方便二次框选）
     DisplayDlg* dispDlg = this->window()->findChild<DisplayDlg*>();
+    if (dispDlg) {
+        dispDlg->clearOverlaySelection();
+    }
+
+    UpdateHSIThreshold();
     if (dispDlg) {
         dispDlg->ShowRunTest(m_ImageSeg);
     }
@@ -426,9 +441,11 @@ void ColorDlg::onButtonRunTest()
 
 void ColorDlg::onButtonStopTest()
 {
-    // Grab and display a single frame (freeze the image).
+    m_isColorTesting = false;
+    // 先停止动态测试的定时器，再抓帧显示（对应 MFC ShowColorTest 中的 Stop()）
     DisplayDlg* dispDlg = this->window()->findChild<DisplayDlg*>();
     if (dispDlg) {
+        dispDlg->Stop();
         dispDlg->ShowSingle();
     }
 }
@@ -482,9 +499,9 @@ void ColorDlg::onButtonLoad()
 
             // Reflect loaded values in the scroll-bar positions
             // (update only the bars that are member variables)
-            scrollBarHMin->setValue(HSIThreshold[m_object][0]);
-            scrollBarSMin->setValue(HSIThreshold[m_object][2]);
-            scrollBarIMin->setValue(HSIThreshold[m_object][4]);
+            // 同步当前对象的全部 6 个滑块并重绘色环
+            // 对应 MFC OnBnClickedColorLoad 中的 UpdateHSIThreshold() + OnPaint()
+            loadThresholdForObject(m_object);
             m_isSaved = true;
             Debug::get()->print(L"[Color] HSI thresholds loaded from color.dat.");
         }
@@ -579,7 +596,7 @@ void ColorDlg::updateDisplayImage(const QPixmap& pixmap)
     m_lastFrame = pixmap;
 
     // 保持宽高比缩放图像以适应显示区域
-    QPixmap scaled = pixmap.scaled(m_pDisplayLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    QPixmap scaled = pixmap.scaled(m_pDisplayLabel->size(), Qt::KeepAspectRatio, Qt::FastTransformation);
 
     // 如果有采样点，绘制标记
     if (!m_vecColorSet.isEmpty()) {
@@ -631,9 +648,9 @@ void ColorDlg::redrawPreview()
         return;
     }
 
-    // 拉伸填充预览框
-    QSize avail = m_pDisplayLabel->contentsRect().size();
-    QPixmap pix = baseImage.scaled(avail, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    // 拉伸填充预览框（使用 size() 与 onZoom() 保持一致，避免图像位移）
+    QSize avail = m_pDisplayLabel->size();
+    QPixmap pix = baseImage.scaled(avail, Qt::IgnoreAspectRatio, Qt::FastTransformation);
     QPainter painter(&pix);
     painter.setRenderHint(QPainter::Antialiasing);
 
@@ -654,8 +671,8 @@ void ColorDlg::redrawPreview()
         painter.drawLine(px, py - 4, px, py + 4);
     }
 
-    // 绘制当前拖动框选矩形
-    if (m_selecting && !m_currentRect.isNull()) {
+    // 绘制框选矩形（鼠标释放后仍保留，与 MFC GDI XOR 行为一致）
+    if (!m_currentRect.isNull()) {
         painter.setPen(QPen(Qt::blue, 2, Qt::DashLine));
         painter.setBrush(Qt::NoBrush);
         QRect r = m_currentRect.normalized();
@@ -728,17 +745,14 @@ bool ColorDlg::eventFilter(QObject* watched, QEvent* event)
                 }
                 else {
                     // 点模式：只收集坐标，不采样（由「采样」按钮处理）
+                    // 坐标映射与 onZoom() 的 IgnoreAspectRatio 拉伸一致：
+                    // 预览图强制拉伸填满 label，点击坐标直接按比例映射回原图
                     if (m_lastFrame.isNull()) return true;
-                    QSize avail = m_pDisplayLabel->contentsRect().size();
-                    QPixmap scaled = m_lastFrame.scaled(avail, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-                    QRect target = QStyle::alignedRect(layoutDirection(), Qt::AlignCenter, scaled.size(), m_pDisplayLabel->contentsRect());
-                    double scaleX = double(m_lastFrame.width()) / double(scaled.width());
-                    double scaleY = double(m_lastFrame.height()) / double(scaled.height());
-                    int ix = int((pos.x() - target.left()) * scaleX + 0.5);
-                    int iy = int((pos.y() - target.top()) * scaleY + 0.5);
-                    ix = qBound(0, ix, m_lastFrame.width() - 1);
-                    iy = qBound(0, iy, m_lastFrame.height() - 1);
-                    // 收集点坐标，刷新预览显示红点
+                    int lw = m_pDisplayLabel->width();
+                    int lh = m_pDisplayLabel->height();
+                    if (lw <= 0 || lh <= 0) return true;
+                    int ix = qBound(0, int(pos.x() * m_lastFrame.width()  / double(lw)), m_lastFrame.width()  - 1);
+                    int iy = qBound(0, int(pos.y() * m_lastFrame.height() / double(lh)), m_lastFrame.height() - 1);
                     m_points.push_back(QPoint(ix, iy));
                     redrawPreview();
                 }
@@ -817,12 +831,20 @@ void ColorDlg::onZoom()
     if (!dispDlg) return;
 
     QRect selRect = dispDlg->GetRect().normalized();
+
+    // 未在显示区框选时弹窗提示
+    if (selRect.isEmpty()) {
+        QMessageBox::warning(this, "提示", "请先在显示区框选图像");
+        return;
+    }
+
     unsigned char* pSrc = dispDlg->getDispSingle();
     if (!pSrc || !m_pDisplayLabel) return;
 
     // 将 rect 限定在图像范围内
     QRect imgRect(0, 0, DISPLAY_W, DISPLAY_H);
     selRect = selRect.intersected(imgRect);
+
     if (selRect.isEmpty() || selRect.width() < 2 || selRect.height() < 2) return;
 
     // 从原始帧截取矩形区域
@@ -843,14 +865,15 @@ void ColorDlg::onZoom()
     // 保存放大源矩形，用于右侧框选→原图坐标映射
     m_zoomSourceRect = selRect;
 
-    // 同时将全帧保存到 m_lastFrame，供采样映射使用
+    // 将全帧保存到 m_lastFrame，供后续采样映射使用
+    // 每次 onZoom 都重建，因为 m_pDispSingle 可能已被 ShowSingle 更新
     QImage fullImg(pSrc, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
     m_lastFrame = QPixmap::fromImage(fullImg);
 }
 
 // 判断像素是否匹配当前对象的 HSI 阈值
 // 与 DisplayDlg::FindPixel 使用完全一致的计算方式
-bool ColorDlg::isPixelMatchingThreshold(int R, int G, int B) const
+bool ColorDlg::isPixelMatchingThreshold(int R, int G, int B) 
 {
     if (R + G + B == 0) return false;
 
@@ -877,7 +900,12 @@ bool ColorDlg::isPixelMatchingThreshold(int R, int G, int B) const
 
 void ColorDlg::onSample()
 {
-    // 优先使用右侧预览框的框选矩形；没有则采样全帧中心 5×5
+    // 未在预览图像上框选时弹窗提示
+    if (m_currentRect.isNull() || m_currentRect.width() <= 1 || m_currentRect.height() <= 1) {
+        QMessageBox::warning(this, "提示", "请先在预览图像上框选采样区域");
+        return;
+    }
+
     QImage img;
     QRect  sampleRect;
 
@@ -909,17 +937,14 @@ void ColorDlg::onSample()
         // 非放大模式：从全帧采样
         img = m_lastFrame.toImage().convertToFormat(QImage::Format_RGB888);
         if (!m_currentRect.isNull() && m_currentRect.width() > 1 && m_currentRect.height() > 1) {
-            // 右侧已有框选，映射回全帧
-            QSize avail = m_pDisplayLabel->contentsRect().size();
-            QPixmap scaled = m_lastFrame.scaled(avail, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-            QRect target = QStyle::alignedRect(layoutDirection(), Qt::AlignCenter, scaled.size(), m_pDisplayLabel->contentsRect());
-            double scaleX = double(m_lastFrame.width()) / double(scaled.width());
-            double scaleY = double(m_lastFrame.height()) / double(scaled.height());
+            // 右侧已有框选，映射回全帧（IgnoreAspectRatio，与 onZoom 一致）
+            int lw = m_pDisplayLabel->width();
+            int lh = m_pDisplayLabel->height();
             QRect cr = m_currentRect.normalized();
-            int ix1 = qBound(0, int((cr.left() - target.left()) * scaleX), img.width() - 1);
-            int iy1 = qBound(0, int((cr.top() - target.top()) * scaleY), img.height() - 1);
-            int ix2 = qBound(0, int((cr.right() - target.left()) * scaleX), img.width() - 1);
-            int iy2 = qBound(0, int((cr.bottom() - target.top()) * scaleY), img.height() - 1);
+            int ix1 = qBound(0, int(cr.left()   * m_lastFrame.width()  / double(lw)), img.width()  - 1);
+            int iy1 = qBound(0, int(cr.top()    * m_lastFrame.height() / double(lh)), img.height() - 1);
+            int ix2 = qBound(0, int(cr.right()  * m_lastFrame.width()  / double(lw)), img.width()  - 1);
+            int iy2 = qBound(0, int(cr.bottom() * m_lastFrame.height() / double(lh)), img.height() - 1);
             sampleRect = QRect(ix1, iy1, ix2 - ix1 + 1, iy2 - iy1 + 1);
         }
         else {
@@ -930,7 +955,8 @@ void ColorDlg::onSample()
         return;
     }
 
-    // ── MFC 意图：逐像素用当前阈值筛选 ──
+    // ── 逐像素采样（与 MFC ColorAnalyse 一致：无阈值过滤，记录区域内所有像素） ──
+    // MFC DisplayDlg.cpp:730 无条件记录所有像素，目的是让用户看到颜色分布后手动调滑块
     QRect r = sampleRect.intersected(img.rect());
     if (r.isEmpty()) return;
 
@@ -938,24 +964,34 @@ void ColorDlg::onSample()
     m_vecColorSet.clear();
     memset(yi, 0, sizeof(yi));
 
-    int matched = 0;
+    int count = 0;
+
     for (int y = r.top(); y <= r.bottom(); ++y) {
         for (int x = r.left(); x <= r.right(); ++x) {
             QRgb rgb = img.pixel(x, y);
             int R = qRed(rgb), G = qGreen(rgb), B = qBlue(rgb);
-            if (isPixelMatchingThreshold(R, G, B)) {
-                m_vecColorSet.append(QPoint(x, y));
-                int Ival = (R + G + B) / 3;
-                if (Ival >= 0 && Ival < 255) yi[Ival]++;
-                matched++;
-            }
+            if (R + G + B == 0) continue;  // 跳过纯黑像素
+
+            int Ival = (R + G + B) / 3;
+
+            // 无条件记录（对应 MFC: m_vecColorSet.push_back(色环坐标))
+            m_vecColorSet.append(QPoint(x, y));
+            if (Ival >= 0 && Ival < 255) yi[Ival]++;
+            count++;
         }
     }
 
-    Debug::get()->print(QString("[Color] Threshold-filtered: %1 pixels matched")
-        .arg(matched).toStdWString().c_str());
+    if (count == 0) return;
 
-    // 重绘色环（在 HSI 空间标注所有匹配像素的位置）
+    Debug::get()->print(QString("[Color] Sampled %1 pixels").arg(count).toStdWString().c_str());
+
+    // 注意：不自动调滑块，与 MFC OnNewsample 行为一致
+    // 采样只记录点和直方图，用户根据色环分布手动调整阈值
+
+    // 确保 HSIThreshold 数组与当前滑块值同步（只写数组，不改滑块）
+    UpdateHSIThreshold();
+
+    // 重绘色环（在 HSI 空间标注所有像素的位置）
     drawHSIRing();
     // 刷新亮度直方图（只显示匹配像素的 I 分布）
     drawBrightnessHistogram();
@@ -965,14 +1001,19 @@ void ColorDlg::onSample()
 
 void ColorDlg::onClearSamples()
 {
+    // 清空数据
     m_vecColorSet.clear();
     m_points.clear();
     memset(yi, 0, sizeof(yi));
-    if (!m_lastFrame.isNull()) {
-        updateDisplayImage(m_lastFrame);
-    } else if (m_pDisplayLabel) {
-        m_pDisplayLabel->clear();
-    }
+
+    // 清除预览框上的框选矩形，保留放大图像
+    m_currentRect = QRect();
+    redrawPreview();
+
+    // 重绘色环（m_vecColorSet 已空，黑点消失）
+    drawHSIRing();
+
+    // 重绘亮度直方图（yi[] 已清零，蓝柱消失）
     drawBrightnessHistogram();
 }
 
@@ -994,7 +1035,7 @@ void ColorDlg::drawHSIRing()
     if (labelSize.isEmpty()) return;
 
     // 将位图缩放后居中放置到画布上
-    QPixmap pix = ringBase.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    QPixmap pix = ringBase.scaled(labelSize, Qt::KeepAspectRatio, Qt::FastTransformation);
     QPixmap canvas(labelSize);
     canvas.fill(Qt::white);
 
@@ -1079,6 +1120,8 @@ void ColorDlg::drawHSIRing()
 
     // ── 2. 标注所有采样点（对应 MFC DrawColorPoint）─────
     //    H,S 用 HLUT+Min3 公式，+sin 匹配色环 CW 布局
+    //    关闭抗锯齿，避免黑点边缘与色环背景混合导致深浅不一
+    painter.setRenderHint(QPainter::Antialiasing, false);
     if (!m_lastFrame.isNull() && !m_vecColorSet.isEmpty()) {
         QImage fullImg = m_lastFrame.toImage()
                              .convertToFormat(QImage::Format_RGB888);
@@ -1192,7 +1235,7 @@ void ColorDlg::drawBrightnessHistogram()
     for (int i = 0; i < 255; i++) {
         int barH = int((double)yi[i] / maxVal * plotH);
         if (barH <= 0) continue;
-        QColor c(i, i, i);
+        QColor c(0, 0, 255);  // 统一蓝色，与 MFC DrawPoint 的 RGB(0,0,255) 一致
         painter.fillRect(QRectF(2 + i * barW, h - 3 - barH,
                                  qMax(1.0, barW), (double)barH), c);
     }
