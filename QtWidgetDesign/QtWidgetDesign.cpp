@@ -83,6 +83,7 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     ColorDlg* colorDlg = new ColorDlg(myTabWidget);
     myTabWidget->addTab(colorDlg, "Color");       // 采色
     m_pColorDlg = colorDlg;
+    displayDlg->setColorDlg(colorDlg);             // 让 DisplayDlg 访问实际的 ColorDlg 实例
 
     MatchDlg_5vs5* matchDlg = new MatchDlg_5vs5(myTabWidget);
     matchDlg->setDisplayDlg(displayDlg);  // 设置DisplayDlg指针

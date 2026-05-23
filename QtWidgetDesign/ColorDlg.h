@@ -105,6 +105,7 @@ private:
     bool m_ImageSeg;                      // 是否开启图像分割功能
     bool m_isSaved;                       // 参数是否已保存
     bool m_isColorTesting = false;        // 是否处于颜色测试模式（切换对象时自动触发测试）
+    bool m_isRunTesting = false;          // 是否处于动态测试模式（切换对象时不中断测试）
     int HSIThreshold[8][6];               // 各颜色HSI阈值
     QVector<QPoint> m_vecColorSet;        // 采样颜色点集合
     QVector<QPoint> m_points;             // 点选模式采集的点（放大区坐标）

@@ -3,6 +3,7 @@
 #include "DisplayDlg.h"   // Needed for ShowColorTest / ShowRunTest / ShowSingle
 #include <QDialog>
 #include <QMessageBox>
+#include <QDebug>
 #include <QStyle>
 #include <QMouseEvent>
 #include <cstring>
@@ -157,10 +158,14 @@ void ColorDlg::initUI()
     connect(m_objectGroup, &QButtonGroup::buttonClicked,
             this, [this](QAbstractButton* btn) {
         int id = m_objectGroup->id(btn);
+        qDebug() << "[RadioButton] clicked, id=" << id << "m_isRunTesting=" << m_isRunTesting;
         if (id >= 0) {
             loadThresholdForObject(id);
-            // 如果当前处于测试模式，切换对象后自动重新测试
-            if (m_isColorTesting) {
+            if (m_isRunTesting) {
+                // 动态测试模式：只更新对象，不中断测试
+                // IdentifyTest() 每帧读取 currentObject()，自动使用新对象
+            } else if (m_isColorTesting) {
+                // 单帧测试模式：自动重新测试
                 onButtonColorTest();
             }
         }
@@ -415,6 +420,7 @@ void ColorDlg::onButtonColorTest()
 {
     // 清除左侧显示区红框，保留右侧预览图像和框选矩形（方便二次框选）
     m_isColorTesting = true;
+    m_isRunTesting = false;  // 切换到单帧测试模式，停止动态测试标志
     DisplayDlg* dispDlg = this->window()->findChild<DisplayDlg*>();
     if (dispDlg) {
         dispDlg->clearOverlaySelection();
@@ -428,6 +434,7 @@ void ColorDlg::onButtonColorTest()
 void ColorDlg::onButtonRunTest()
 {
     // 清除左侧显示区红框，保留右侧预览图像和框选矩形（方便二次框选）
+    m_isRunTesting = true;
     DisplayDlg* dispDlg = this->window()->findChild<DisplayDlg*>();
     if (dispDlg) {
         dispDlg->clearOverlaySelection();
@@ -442,6 +449,7 @@ void ColorDlg::onButtonRunTest()
 void ColorDlg::onButtonStopTest()
 {
     m_isColorTesting = false;
+    m_isRunTesting = false;
     // 先停止动态测试的定时器，再抓帧显示（对应 MFC ShowColorTest 中的 Stop()）
     DisplayDlg* dispDlg = this->window()->findChild<DisplayDlg*>();
     if (dispDlg) {

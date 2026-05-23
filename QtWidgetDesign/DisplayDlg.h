@@ -200,7 +200,10 @@ public:
 
     // 清除采色模式覆盖层上的框选矩形
     // 供 ColorDlg 在切换测试模式时调用，清除左侧显示区的红框
-    void clearOverlaySelection() { if (m_overlayWidget) m_overlayWidget->clearSelectionRect(); }
+    void clearOverlaySelection();
+
+    // 设置采色对话框实例指针（由 QtWidgetDesign 构造函数调用）
+    void setColorDlg(class ColorDlg* dlg);
 
     // Accessor for the single-grab pixel buffer.
     // Used by DemarcateDlg::applyPerspectiveCorrection() to read and
@@ -356,5 +359,9 @@ private:
     // 采色模式的透明覆盖层控件，叠在 displayLabel 上方
     // 仅在 m_setStatus == COLOR_SET 时可见，用于绘制鼠标框选红框
     OverlayWidget* m_overlayWidget;
+
+    // 采色对话框实际实例指针（标签页中的实例，非单例）
+    // 由 QtWidgetDesign 构造函数通过 setColorDlg() 设置
+    class ColorDlg* m_pColorDlg = nullptr;
 
 };

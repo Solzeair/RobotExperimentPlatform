@@ -7,6 +7,7 @@
 #include "ColorDlg.h"
 #include "DemarcateDlg.h"   // Needed to forward BORDER_SET clicks
 #include <cmath>
+#include <QDebug>
 
 // 自定义MIN函数，计算三个值中的最小值
 inline int MIN(int a, int b, int c, int n)
@@ -655,15 +656,29 @@ QRect DisplayDlg::GetRect() const
     return m_Rect;
 }
 
+// 清除采色覆盖层上的框选矩形
+void DisplayDlg::clearOverlaySelection()
+{
+    if (m_overlayWidget) m_overlayWidget->clearSelectionRect();
+}
+
+// 设置采色对话框实际实例指针
+void DisplayDlg::setColorDlg(ColorDlg* dlg)
+{
+    m_pColorDlg = dlg;
+}
+
 // 功能：绘制足球场背景和机器人
 
 void DisplayDlg::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
 
-    // 足球场背景 + 识别叠加层：适用于比赛、预备、动态测试状态
+    // 足球场背景 + 识别叠加层：适用于比赛、预备、非分割动态测试状态
+    // 注意：RunTestSeg（分割模式）由 IdentifyTest() 直接管理 displayLabel 显示，
+    // 不走 paintEvent，避免场地背景覆盖黑色分割图
     if (m_status == STATUS::Game || m_status == STATUS::Prepare ||
-        m_status == STATUS::RunTest || m_status == STATUS::RunTestSeg) {
+        m_status == STATUS::RunTest) {
         QPixmap pixmap(DISPLAY_W, DISPLAY_H);
         pixmap.fill(Qt::transparent);
         QPainter painter(&pixmap);
@@ -822,10 +837,10 @@ void DisplayDlg::ProcessImage(unsigned char* pBmp)
     break;
     case STATUS::RunTestSeg:
     {
+        // IdentifyTest() 直接设置 displayLabel 的 pixmap，不需要 repaint
         this->IdentifyTest();
         m_DisplayAvg.Add(m_DisplayWatch.elapsed());
         m_DisplayWatch.restart();
-        this->repaint();
     }
     break;
     case STATUS::Game:
@@ -990,36 +1005,17 @@ void DisplayDlg::DrawOpp(QPainter* painter)
 
 void DisplayDlg::DrawBall(QPainter* painter)
 {
-    painter->setPen(QPen(Qt::red, 1));
-    painter->setBrush(QBrush(Qt::red));
-
+    // 与 MFC DrawBall 一致：只画当前球位置的红色圆点，不画轨迹
+    // MFC 通过 StretchBlt 从 groundDC 擦除上一帧 → 每帧重建场地背景自然实现
     if (ballInfor.found)
     {
+        // 场地坐标 → 屏幕坐标（与 MFC 一致：x*2.5+45, y*2.5+15）
         int x = (int)(ballInfor.x * 2.5) + 45;
         int y = (int)(ballInfor.y * 2.5) + 15;
 
-        // 添加当前位置到轨迹
-        m_ballTrail.push_back(QPoint(x, y));
-
-        // 限制轨迹长度
-        if (m_ballTrail.size() > MAX_TRAIL_LENGTH)
-        {
-            m_ballTrail.erase(m_ballTrail.begin());
-        }
-
-        // 绘制轨迹
-        if (m_ballTrail.size() > 1)
-        {
-            painter->setPen(QPen(Qt::yellow, 2, Qt::DotLine));
-            for (size_t i = 1; i < m_ballTrail.size(); i++)
-            {
-                painter->drawLine(m_ballTrail[i - 1], m_ballTrail[i]);
-            }
-        }
-
-        // 绘制足球
-        painter->setPen(QPen(Qt::red, 1));
-        painter->setBrush(QBrush(Qt::red));
+        // 绘制红色实心圆（半径 4px，与 MFC pDC->Ellipse(CRect(x-4,y-4,x+4,y+4)) 一致）
+        painter->setPen(QPen(QColor(255, 128, 0), 1));
+        painter->setBrush(QBrush(QColor(255, 128, 0)));
         painter->drawEllipse(x - 4, y - 4, 8, 8);
     }
 }
@@ -1096,7 +1092,7 @@ int DisplayDlg::screenBuffer(int m, int n, unsigned char* P)
 
 bool DisplayDlg::JudgePixel(int object, int H, int S, int I)
 {
-    ColorDlg* pColorDlg = ColorDlg::getInstance();
+    ColorDlg* pColorDlg = m_pColorDlg ? m_pColorDlg : ColorDlg::getInstance();
     const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
 
     if (HSIThreshold[object][1] > HSIThreshold[object][0])
@@ -1123,59 +1119,19 @@ bool DisplayDlg::JudgePixel(int object, int H, int S, int I)
 
 // 功能：判断像素颜色所属的对象类别
 
+// 功能：根据参考点附近的 MEMB1/MEMB2 像素数量判断颜色类型
+// 对应 MFC JudgeColor（E:\bot\RobotFootball\DisplayDlg.cpp:1740）
+// a = MEMB1 像素数, b = MEMB2 像素数, c = 黑色像素数
+// 返回: 1=MEMB1(紫), 2=MEMB2(绿), 0=黑色, -1=无法判断
 int DisplayDlg::JudgeColor(int a, int b, int c)
 {
-    int obj = -1;
-    int H = 0, S, I;
-    int minobj = 100;
-    ColorDlg* pColorDlg = ColorDlg::getInstance();
-    const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
-    for (int i = 0; i <= 10; i++)
-    {
-        I = (a + b + c) / 3;
-        S = (100 * (abs(a - b) + abs(b - c) + abs(c - a))) / (2 * (a + b + c));
-        if (S < 10)
-            S = 0;
-        if (I < 20)
-        {
-            if (S <= 20 && S >= 15)
-            {
-                obj = 10;
-                return obj;
-            }
-            else
-                return -1;
-        }
-        for (int j = 0; j < 6; j++)
-        {
-            if (HSIThreshold[j][1] > HSIThreshold[j][0])
-            {
-                if (H >= HSIThreshold[j][0] && H <= HSIThreshold[j][1] &&
-                    S >= HSIThreshold[j][2] && S <= HSIThreshold[j][3] &&
-                    I >= HSIThreshold[j][4] && I <= HSIThreshold[j][5])
-                {
-                    if (minobj > j)
-                    {
-                        minobj = j;
-                    }
-                }
-            }
-            else if (HSIThreshold[j][1] < HSIThreshold[j][0])
-            {
-                if ((H >= HSIThreshold[j][0] || H <= HSIThreshold[j][1]) &&
-                    S >= HSIThreshold[j][2] && S <= HSIThreshold[j][3] &&
-                    I >= HSIThreshold[j][4] && I <= HSIThreshold[j][5])
-                {
-                    if (minobj > j)
-                    {
-                        minobj = j;
-                    }
-                }
-            }
-        }
-    }
-    obj = minobj;
-    return obj;
+    // MEMB1 和 MEMB2 同时大量出现 → 无法判断
+    if (a >= 8 && b >= 8)
+        return -1;
+    if (a >= 8) return 1;      // MEMB1 为主
+    if (b >= 8) return 2;      // MEMB2 为主
+    if (c >= 8) return 0;      // 黑色为主
+    return -1;                 // 像素数不足，无法判断
 }
 
 // 功能：查找符合目标对象颜色的像素
@@ -1299,6 +1255,10 @@ void DisplayDlg::StartTest()
     ObjectFound[10] = false;
     ObjectFound[11] = false;
 
+    // 设置识别图像指针（FindBlackID/FindRobotID 需要读取原始图像）
+    // 对应 MFC: m_pIdentify = (RGBTRIPLE*)m_pDispBitmap;
+    m_pIdentify = m_pDispBitmap;
+
     IdentifyAll();        // 识别球（阈值 0 = 我方队色）
     IdentiRobo(1);        // 识别己方机器人 MEMB1（阈值 1）
     IdentiRobo(2);        // 识别己方机器人 MEMB2 / 对手（阈值 2）
@@ -1332,15 +1292,23 @@ void DisplayDlg::IdentifyAll()
     memcpy(m_pTestBitmap, m_pDispBitmap, m * n * 3);
     unsigned char* pTest = m_pTestBitmap;
 
-    ColorDlg* pColorDlg = ColorDlg::getInstance();
+    ColorDlg* pColorDlg = m_pColorDlg ? m_pColorDlg : ColorDlg::getInstance();
     const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
 
-    for (j = 0; j < n; j++)
+    // ── 球识别（对应 MFC IdentifyAll 中的球检测部分，E:\bot\RobotFootball\DisplayDlg.cpp:934） ──
+    // MFC 做法：步长 4 扫描，BALL=6 阈值，面积 30~300，选最大候选
+    // Qt 对应：步长 4，我方队色阈值（object=0），面积 30~300，选最大候选
+    struct BallCandidate { int x, y, num; };
+    BallCandidate ballCandidates[5];
+    int NumBall = 0;
+
+    for (j = 0; j < n; j += 4)
     {
-        for (i = 0; i < m; i++)
+        for (i = 0; i < m; i += 4)
         {
             RGBToHS(i, j, pTest, H, S, I);
 
+            // 使用我方队色阈值（object=0）
             if (H >= HSIThreshold[0][0] && H <= HSIThreshold[0][1] &&
                 S >= HSIThreshold[0][2] && S <= HSIThreshold[0][3] &&
                 I >= HSIThreshold[0][4] && I <= HSIThreshold[0][5])
@@ -1354,15 +1322,14 @@ void DisplayDlg::IdentifyAll()
                 m_yTop = n;
                 m_yBottom = 0;
 
-                if (IdentifySearchLUT(0, i, j, 30, 200, pTest))
+                if (NumBall < 5 && IdentifySearchLUT(0, i, j, 30, 300, pTest))
                 {
                     int x = (m_xLeft + m_xRight) / 2;
                     int y = (m_yTop + m_yBottom) / 2;
-                    ballInfor.x = (double)(x - 45) / 2.5;
-                    ballInfor.y = (double)(y - 15) / 2.5;
-                    ballInfor.found = true;
-                    ballInfor.theta = 0;
-                    ObjectFound[10] = true;
+                    ballCandidates[NumBall].x = x;
+                    ballCandidates[NumBall].y = y;
+                    ballCandidates[NumBall].num = (m_xRight - m_xLeft) * (m_yBottom - m_yTop);
+                    NumBall++;
                 }
                 else
                 {
@@ -1373,6 +1340,28 @@ void DisplayDlg::IdentifyAll()
                 }
             }
         }
+    }
+
+    // 选最大候选（对应 MFC: if (TemBall[0].num < TemBall[i].num) TemBall[0] = TemBall[i]）
+    if (NumBall >= 1)
+    {
+        int bestIdx = 0;
+        for (int k = 1; k < NumBall; k++)
+        {
+            if (ballCandidates[k].num > ballCandidates[bestIdx].num)
+                bestIdx = k;
+        }
+        int bx = ballCandidates[bestIdx].x;
+        int by = ballCandidates[bestIdx].y;
+        if (bx >= 0 && bx < DISPLAY_W && by >= 0 && by < DISPLAY_H) {
+            // Y 翻转：Qt top-down 像标 → MFC bottom-up 场地标
+            int gby = DISPLAY_H - 1 - by;
+            ballInfor.x = ground.groundInfo[bx][gby].x;
+            ballInfor.y = ground.groundInfo[bx][gby].y;
+        }
+        ballInfor.found = true;
+        ballInfor.theta = 0;
+        ObjectFound[10] = true;
     }
 
     delete[] m_pTestBitmap;
@@ -1401,26 +1390,40 @@ void DisplayDlg::BallPosFilter()
 
 // 功能：识别己方和对方机器人
 
+// 功能：识别己方和对方机器人
+// 对应 MFC IdentiRobo（E:\bot\RobotFootball\DisplayDlg.cpp:1189）
+//
+// 己方机器人识别流程：
+//   1. 泛洪填充找到队色色块，得到中心坐标 (TeamTarget)
+//   2. 通过色块形状计算法线角度 (NormalTheta)
+//   3. 根据角度计算 4 个参考点位置（距离中心 m_Length 处）
+//   4. FindBlackID 检测参考点黑色/非黑色 → 确定机器人朝向
+//   5. FindRobotID 检测参考点的 MEMB1/MEMB2 颜色组合 → 确定编号
+//   6. ground.groundInfo[][] 将像素坐标转为场地坐标
+//
+// 对手机器人：只检测色块位置，不做编号识别
 void DisplayDlg::IdentiRobo(int ObjectCount)
 {
     int i, j;
     int m = m_ImageSize.width();
     int n = m_ImageSize.height();
-    int index;
     int H, S, I;
     int xLeftTem, xRightTem, yTopTem, yBottomTem;
     int robotNum = 0;
 
-    // 注意：不再清空 robotInfor / OpprobotInfor
-    // 由 StartTest() 统一清空，避免多次调用互相覆盖
+    // 临时存储识别结果（与 MFC TemTeam/TemOpp 对应）
+    QPoint TeamTarget[20];
+    double NormalTheta[20];
+    int NumTeam = 0;
 
     unsigned char* m_pTestBitmap = new unsigned char[m * n * 3];
     memcpy(m_pTestBitmap, m_pDispBitmap, m * n * 3);
     unsigned char* pTest = m_pTestBitmap;
 
-    ColorDlg* pColorDlg = ColorDlg::getInstance();
+    ColorDlg* pColorDlg = m_pColorDlg ? m_pColorDlg : ColorDlg::getInstance();
     const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
 
+    // ── 第一遍扫描：找到所有色块 ──
     for (j = 0; j < n; j++)
     {
         for (i = 0; i < m; i++)
@@ -1445,30 +1448,45 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
                     int x = (m_xLeft + m_xRight) / 2;
                     int y = (m_yTop + m_yBottom) / 2;
 
-                    if (ObjectCount == 1 || ObjectCount == 2)
+                    if (ObjectCount == 4)
                     {
-                        // MEMB1 / MEMB2 → 己方机器人
-                        if (robotNum < MAX_ROBOT_NUM)
+                        // ── 对手：只记录位置，不做编号识别 ──
+                        if (robotNum < MAX_ROBOT_NUM && x >= 0 && x < DISPLAY_W && y >= 0 && y < DISPLAY_H)
                         {
-                            robotInfor[robotNum].x = (double)(x - 45) / 2.5;
-                            robotInfor[robotNum].y = (double)(y - 15) / 2.5;
-                            robotInfor[robotNum].found = true;
-                            robotInfor[robotNum].theta = 0;
-                            robotInfor[robotNum].num = robotNum;
-                            ObjectFound[robotNum] = true;
-                            robotNum++;
-                        }
-                    }
-                    else if (ObjectCount == 4)
-                    {
-                        // 敌方队色 → 对手
-                        if (robotNum < MAX_ROBOT_NUM)
-                        {
-                            OpprobotInfor[robotNum].x = (double)(x - 45) / 2.5;
-                            OpprobotInfor[robotNum].y = (double)(y - 15) / 2.5;
+                            // Y 翻转：Qt top-down 像标 → MFC bottom-up 场地标
+                            int gy = DISPLAY_H - 1 - y;
+                            OpprobotInfor[robotNum].x = ground.groundInfo[x][gy].x;
+                            OpprobotInfor[robotNum].y = ground.groundInfo[x][gy].y;
                             OpprobotInfor[robotNum].found = true;
                             OpprobotInfor[robotNum].num = robotNum;
                             robotNum++;
+                        }
+                    }
+                    else
+                    {
+                        // ── 己方：记录色块中心，计算法线角度 ──
+                        if (NumTeam < 20)
+                        {
+                            TeamTarget[NumTeam] = QPoint(x, y);
+
+                            // 通过色块边界框计算法线角度
+                            // 对应 MFC SearchTeam 中的椭圆拟合
+                            int w = m_xRight - m_xLeft;
+                            int h = m_yBottom - m_yTop;
+                            if (w > 3 && h > 3)
+                            {
+                                // 简化版：用边界框的宽高比估算角度
+                                // 宽 > 高 → 水平方向，高 > 宽 → 垂直方向
+                                if (w >= h)
+                                    NormalTheta[NumTeam] = 0.0;      // 水平
+                                else
+                                    NormalTheta[NumTeam] = M_PI / 2; // 垂直
+                            }
+                            else
+                            {
+                                NormalTheta[NumTeam] = 0.0;
+                            }
+                            NumTeam++;
                         }
                     }
                 }
@@ -1483,79 +1501,184 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
         }
     }
 
+    // ── 第二遍：对己方色块进行编号识别 ──
+    // 对应 MFC IdentiRobo（E:\bot\RobotFootball\DisplayDlg.cpp:1189）
+    double m_Length = 7.5;
+    m_pIdentify = m_pDispBitmap;  // FindBlackID 需要读取原始图像
+
+    for (i = 0; i < NumTeam && robotNum < MAX_ROBOT_NUM; i++)
+    {
+        int RobotID = -1;
+        double OrientAngle = 0;
+
+        // 根据法线角度计算 4 个参考点位置
+        // 对应 MFC：temptheta = Pi/2 - atan(0.75) - NormalTheta[i]
+        double temptheta = M_PI / 2 - atan(0.75) - NormalTheta[i];
+        QPoint ReferPoint[4];
+        ReferPoint[0] = QPoint((int)(TeamTarget[i].x() + m_Length * cos(temptheta)),
+                                (int)(TeamTarget[i].y() + m_Length * sin(temptheta)));
+        ReferPoint[1] = QPoint((int)(TeamTarget[i].x() + m_Length * cos(temptheta + 2 * atan(0.75))),
+                                (int)(TeamTarget[i].y() + m_Length * sin(temptheta + 2 * atan(0.75))));
+        ReferPoint[2] = QPoint((int)(TeamTarget[i].x() + m_Length * cos(temptheta + M_PI)),
+                                (int)(TeamTarget[i].y() + m_Length * sin(temptheta + M_PI)));
+        ReferPoint[3] = QPoint((int)(TeamTarget[i].x() + m_Length * cos(temptheta + 2 * atan(0.75) + M_PI)),
+                                (int)(TeamTarget[i].y() + m_Length * sin(temptheta + 2 * atan(0.75) + M_PI)));
+
+        // 检测 4 个参考点是否为黑色
+        bool blackID[4] = {false, false, false, false};
+        for (j = 0; j < 4; j++)
+            blackID[j] = FindBlackID(ReferPoint[j].x(), ReferPoint[j].y(), j);
+
+        // 根据黑色参考点组合确定朝向和编号
+        if (blackID[0] && blackID[1])
+        {
+            // 参考点 0,1 为黑 → 朝向 = NormalTheta + π
+            OrientAngle = NormalTheta[i] + M_PI;
+            RobotID = FindRobotID(ReferPoint[2], ReferPoint[3]);
+        }
+        else if (blackID[2] && blackID[3])
+        {
+            // 参考点 2,3 为黑 → 朝向 = NormalTheta
+            OrientAngle = NormalTheta[i];
+            RobotID = FindRobotID(ReferPoint[0], ReferPoint[1]);
+        }
+        else if (!blackID[0] && !blackID[1])
+        {
+            // 参考点 0,1 非黑 → 朝向 = NormalTheta
+            OrientAngle = NormalTheta[i];
+            RobotID = FindRobotIDD(ReferPoint[2], ReferPoint[3]);
+        }
+        else if (!blackID[2] && !blackID[3])
+        {
+            // 参考点 2,3 非黑 → 朝向 = NormalTheta + π
+            OrientAngle = NormalTheta[i] + M_PI;
+            RobotID = FindRobotIDD(ReferPoint[0], ReferPoint[1]);
+        }
+
+        if (RobotID >= 0 && RobotID < MAX_ROBOT_NUM)
+        {
+            int px = TeamTarget[i].x();
+            int py = TeamTarget[i].y();
+            if (px >= 0 && px < DISPLAY_W && py >= 0 && py < DISPLAY_H)
+            {
+                // Y 翻转：Qt top-down 像标 → MFC bottom-up 场地标
+                int gpy = DISPLAY_H - 1 - py;
+                robotInfor[RobotID].theta = OrientAngle * 180.0 / M_PI;
+                robotInfor[RobotID].x = ground.groundInfo[px][gpy].x;
+                robotInfor[RobotID].y = ground.groundInfo[px][gpy].y;
+                robotInfor[RobotID].found = true;
+                robotInfor[RobotID].num = RobotID;
+                ObjectFound[RobotID] = true;
+            }
+        }
+    }
+
     delete[] m_pTestBitmap;
 }
 
-// 功能：根据位置变化查找机器人ID
-
+// 功能：通过参考点的 MEMB1/MEMB2 颜色组合查找机器人编号
+// 对应 MFC FindRobotID（E:\bot\RobotFootball\DisplayDlg.cpp:1377）
+// 在参考点 RP1 和 RP2 附近各取 5x5 区域，统计 MEMB1/MEMB2/黑色像素数量
+// 根据颜色组合确定机器人编号
+//
+// 编号对照表：
+//   RPID1=0(黑)  RPID2=1(紫)  → 0号车
+//   RPID1=1(紫)  RPID2=0(黑)  → 1号车
+//   RPID1=1(紫)  RPID2=1(紫)  → 2号车
+//   RPID1=0(黑)  RPID2=2(绿)  → 3号车
+//   RPID1=2(绿)  RPID2=0(黑)  → 4号车
 int DisplayDlg::FindRobotID(QPoint RP1, QPoint RP2)
 {
-    int i;
-    double theta1 = 0, theta2 = 0;
-    double deltx, delty;
+    int roboID, RPID1, RPID2;
+    int ii, jj;
+    int sum1, sum2, sum0;
+    int H = 0, S = 0, I = 0;
 
-    for (i = 0; i < MAX_ROBOT_NUM; i++)
-    {
-        if (robotBk[i].found)
+    // 检测参考点 1 附近的 5x5 区域
+    sum1 = sum2 = sum0 = 0;
+    for (jj = RP1.y() - 2; jj <= RP1.y() + 2; jj++)
+        for (ii = RP1.x() - 2; ii <= RP1.x() + 2; ii++)
         {
-            deltx = robotInfor[i].x - robotBk[i].x;
-            delty = robotInfor[i].y - robotBk[i].y;
-            theta2 = atan2(delty, deltx) * 180 / 3.1415926;
-            if (theta2 < 0) theta2 += 360;
-            theta1 = robotBk[i].theta;
-            if (abs((int)(theta1 - theta2)) < 90)
-            {
-                return i;
-            }
+            if (jj < 0 || jj >= DISPLAY_H || ii < 0 || ii >= DISPLAY_W) continue;
+            RGBToHS(ii, jj, m_pIdentify, H, S, I);
+            if (JudgePixel(1, H, S, I))        // MEMB1
+                sum1++;
+            else if (JudgePixel(2, H, S, I))   // MEMB2
+                sum2++;
+            else if (screenBuffer(ii, jj, m_pIdentify) != 12684)  // 非场地背景
+                sum0++;
         }
-    }
-    return -1;
+    RPID1 = JudgeColor(sum1, sum2, sum0);
+
+    // 检测参考点 2 附近的 5x5 区域
+    sum1 = sum2 = sum0 = 0;
+    for (jj = RP2.y() - 2; jj <= RP2.y() + 2; jj++)
+        for (ii = RP2.x() - 2; ii <= RP2.x() + 2; ii++)
+        {
+            if (jj < 0 || jj >= DISPLAY_H || ii < 0 || ii >= DISPLAY_W) continue;
+            RGBToHS(ii, jj, m_pIdentify, H, S, I);
+            if (JudgePixel(1, H, S, I))
+                sum1++;
+            else if (JudgePixel(2, H, S, I))
+                sum2++;
+            else if (screenBuffer(ii, jj, m_pIdentify) != 12684)
+                sum0++;
+        }
+    RPID2 = JudgeColor(sum1, sum2, sum0);
+
+    // 根据颜色组合确定机器人编号
+    if (RPID1 == 0 && RPID2 == 1) roboID = 0;
+    else if (RPID1 == 1 && RPID2 == 0) roboID = 1;
+    else if (RPID1 == 1 && RPID2 == 1) roboID = 2;
+    else if (RPID1 == 0 && RPID2 == 2) roboID = 3;
+    else if (RPID1 == 2 && RPID2 == 0) roboID = 4;
+    else if (RPID1 == 2 && RPID2 == 2) roboID = 5;
+    else if (RPID1 == 2 && RPID2 == 1) roboID = 6;
+    else if (RPID1 == 1 && RPID2 == 2) roboID = 7;
+    else roboID = -1;
+
+    return roboID;
 }
 
-//功能：根据距离查找机器人ID
-
+// 功能：通过参考点的 MEMB1/MEMB2 颜色组合查找机器人编号（备用方法）
+// 对应 MFC FindRobotIDD（E:\bot\RobotFootball\DisplayDlg.cpp:1333）
+// 与 FindRobotID 相同的检测逻辑，用于当黑色参考点检测不确定时的后备
 int DisplayDlg::FindRobotIDD(QPoint RP1, QPoint RP2)
 {
-    int i;
-    double deltx, delty;
-
-    for (i = 0; i < MAX_ROBOT_NUM; i++)
-    {
-        if (robotInfor[i].found)
-        {
-            deltx = robotInfor[i].x - robotBk[i].x;
-            delty = robotInfor[i].y - robotBk[i].y;
-            m_theta = atan2(delty, deltx);
-            m_Length = sqrt(deltx * deltx + delty * delty);
-            if (m_Length < 2)
-            {
-                return i;
-            }
-        }
-    }
-    return -1;
+    // 与 FindRobotID 使用相同的颜色组合逻辑
+    return FindRobotID(RP1, RP2);
 }
 
 // 功能：查找黑色区域
 
+// 功能：检测参考点附近是否有黑色区域
+// 对应 MFC FindBlackID（E:\bot\RobotFootball\DisplayDlg.cpp:1302）
+// 检查以 (m,n) 为中心的 3x3 区域，统计非 MEMB1/MEMB2 且非场地背景的黑色像素
+// 黑色像素 >= 5 则判定为黑色区域
 bool DisplayDlg::FindBlackID(int m, int n, int Num)
 {
-    int i;
-    int R, G, B;
-    int index = (n * m_ImageSize.width() + m) * 3;
-    R = m_pDispBitmap[index + 2];
-    G = m_pDispBitmap[index + 1];
-    B = m_pDispBitmap[index + 0];
-    int I = (R + G + B) / 3;
-    int S = (100 * (abs(R - G) + abs(G - B) + abs(B - R))) / (2 * (R + G + B));
+    int ii, jj;
+    int H = 0, S = 0, I = 0;
+    int sumblack = 0;
 
-    if (S < 20 && I < 30)
-    {
-        BlackSum[Num]++;
+    for (jj = n - 1; jj <= n + 1; jj++)
+        for (ii = m - 1; ii <= m + 1; ii++)
+        {
+            if (jj < 0 || jj >= DISPLAY_H || ii < 0 || ii >= DISPLAY_W) continue;
+            RGBToHS(ii, jj, m_pIdentify, H, S, I);
+            // 不是 MEMB1、不是 MEMB2、不是场地背景(12684) → 黑色
+            if (!JudgePixel(1, H, S, I)
+                && !JudgePixel(2, H, S, I)
+                && (screenBuffer(ii, jj, m_pIdentify) != 12684))
+            {
+                sumblack++;
+                if (sumblack >= 5) break;
+            }
+        }
+    if (sumblack >= 5) {
         return true;
-    }
-    else
-    {
+    } else {
+        BlackSum[Num] = sumblack;
         return false;
     }
 }
@@ -1668,37 +1791,57 @@ bool DisplayDlg::SearchTeam(int tab, int Startx, int Starty, int SizeMin, int Si
 
 void DisplayDlg::IdentifyTest()
 {
-    // 获取当前采色对象
-    ColorDlg* pColorDlg = ColorDlg::getInstance();
+    // 对应 MFC IdentifyTest（E:\bot\RobotFootball\DisplayDlg.cpp:785）
+    // 每帧重新创建黑色背景，只在检测到色块的位置画绿色边框+红色十字线
+
+    // 获取当前采色对象（使用实际的标签页实例，而非单例）
+    ColorDlg* pColorDlg = m_pColorDlg ? m_pColorDlg : ColorDlg::getInstance();
     int object = pColorDlg->currentObject();
+    qDebug() << "[IdentifyTest] object=" << object
+             << "H=[" << pColorDlg->getHSIThreshold()[object][0]
+             << "," << pColorDlg->getHSIThreshold()[object][1] << "]";
     if (object < 0 || object >= 8) return;
 
-    // 创建黑色背景 QImage
+    // 创建黑色背景 QImage（每帧重建，对应 MFC destDC.FillSolidRect 黑色）
     QImage segImage(DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
     segImage.fill(Qt::black);
 
-    // 拷贝 m_pDispBitmap 到临时缓冲区（泛洪填充会修改缓冲区，不能改原图）
+    // 拷贝 m_pDispBitmap 到临时缓冲区（泛洪填充会修改像素数据，不能改原图）
     int bufSize = DISPLAY_W * DISPLAY_H * 3;
     unsigned char* pTestBitmap = new unsigned char[bufSize];
     memcpy(pTestBitmap, m_pDispBitmap, bufSize);
 
-    // 每隔 4 像素扫描，检测当前对象颜色
+    // 创建 QPainter（在循环外创建一次，对应 MFC 在循环外创建 pDC1/pDC2）
+    QPainter painter(&segImage);
+    painter.setRenderHint(QPainter::Antialiasing, false);
+
+    // 绿色画笔（2px）用于画色块边框，对应 MFC IdentiPen1(PS_SOLID, 2, RGB(0,255,0))
+    QPen greenPen(QColor(0, 255, 0), 2);
+    // 红色画笔（1px）用于画十字线，对应 MFC IdentiPen2(PS_SOLID, 1, RGB(255,0,0))
+    QPen redPen(QColor(255, 0, 0), 1);
+
     int Num = 0;
+
+    // 每隔 4 像素扫描（对应 MFC for i=0..DISPLAY_W step 4, j=0..DISPLAY_H step 4）
     for (int i = 0; i < DISPLAY_W; i += 4) {
         for (int j = 0; j < DISPLAY_H; j += 4) {
+            // 检测当前像素是否匹配对象颜色
             if (FindPixel(object, i, j, pTestBitmap)) {
+                // 泛洪填充找色块（面积 30~300 像素，最多 20 个）
                 if (Num < 20 && IdentifySearchLUT(object, i, j, 30, 300, pTestBitmap)) {
-                    // FindPixel/IdentifySearchLUT 已是 top-down 坐标，无需翻转
-                    QPainter painter(&segImage);
+                    // 边界有效性检查（对应 MFC m_Target 范围判断）
+                    if (m_Target[object].x() < 0 || m_Target[object].x() >= DISPLAY_W ||
+                        m_Target[object].y() < 0 || m_Target[object].y() >= DISPLAY_H)
+                        continue;
 
-                    // 绿色边框（2px）
-                    painter.setPen(QPen(QColor(0, 255, 0), 2));
+                    // 画绿色边框（对应 MFC pDC1->MoveTo/LineTo 四条边）
+                    painter.setPen(greenPen);
                     painter.setBrush(Qt::NoBrush);
                     painter.drawRect(m_xLeft, m_yTop,
                                     m_xRight - m_xLeft, m_yBottom - m_yTop);
 
-                    // 红色十字线（1px）
-                    painter.setPen(QPen(QColor(255, 0, 0), 1));
+                    // 画红色十字线（对应 MFC pDC2 水平线+垂直线）
+                    painter.setPen(redPen);
                     painter.drawLine(m_xLeft, m_Target[object].y(),
                                     m_xRight, m_Target[object].y());
                     painter.drawLine(m_Target[object].x(), m_yTop,
@@ -1709,7 +1852,10 @@ void DisplayDlg::IdentifyTest()
         }
     }
 
+    painter.end();
     delete[] pTestBitmap;
+
+    // 显示分割结果（对应 MFC SetDIBitsToDevice）
     displayLabel->setPixmap(QPixmap::fromImage(segImage));
 }
 
