@@ -399,6 +399,7 @@ void ColorDlg::initUI()
     // 启动时加载已保存的阈值（会覆盖默认值）
     onButtonLoad();
     loadThresholdForObject(0);
+    m_isSaved = true;  // 初始状态与保存文件一致（或为默认值，也算已保存）
     drawHSIRing();
     drawBrightnessHistogram();
 
@@ -447,6 +448,11 @@ void ColorDlg::onButtonSave()
     else {
         Debug::get()->print(L"[Color] ERROR: could not write color.dat.");
     }
+}
+
+void ColorDlg::saveData()
+{
+    onButtonSave();
 }
 
 void ColorDlg::onButtonLoad()
@@ -664,6 +670,7 @@ void ColorDlg::redrawPreview()
     m_pDisplayLabel->setPixmap(pix);
 }
 
+#if 0 // [已废弃] 旧版平均取色 — 已被 onSample() 的阈值筛选替代
 // 在原始图像坐标的矩形上采样平均颜色并记录点（中心）
 void ColorDlg::sampleAtImageRect(const QRect& imgRect)
 {
@@ -704,6 +711,7 @@ void ColorDlg::sampleAtImageRect(const QRect& imgRect)
     Debug::get()->print(QString("[Color] Rect sampled H=%1 S=%2 I=%3").arg(h).arg(s).arg((ravg+gavg+bavg)/3).toStdWString().c_str());
     redrawPreview();
 }
+#endif
 
 bool ColorDlg::eventFilter(QObject* watched, QEvent* event)
 {
@@ -760,6 +768,7 @@ bool ColorDlg::eventFilter(QObject* watched, QEvent* event)
     return QWidget::eventFilter(watched, event);
 }
 
+#if 0 // [已废弃] 旧版单点平均取色 — 已被 onSample() 的阈值筛选替代
 // 在原始图像坐标点附近（5x5）采样平均颜色并记录点
 void ColorDlg::sampleAtImagePoint(const QPoint& imgPt)
 {
@@ -799,6 +808,7 @@ void ColorDlg::sampleAtImagePoint(const QPoint& imgPt)
     Debug::get()->print(QString("[Color] Point sampled H=%1 S=%2 I=%3").arg(hue).arg(sat).arg((ravg+gavg+bavg)/3).toStdWString().c_str());
     redrawPreview();
 }
+#endif
 
 void ColorDlg::onZoom()
 {
@@ -836,6 +846,33 @@ void ColorDlg::onZoom()
     // 同时将全帧保存到 m_lastFrame，供采样映射使用
     QImage fullImg(pSrc, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
     m_lastFrame = QPixmap::fromImage(fullImg);
+}
+
+// 判断像素是否匹配当前对象的 HSI 阈值
+// 与 DisplayDlg::FindPixel 使用完全一致的计算方式
+bool ColorDlg::isPixelMatchingThreshold(int R, int G, int B) const
+{
+    if (R + G + B == 0) return false;
+
+    int H = 10 * HLUT[R][G][B];                              // H×10, 范围 0~3599
+    int S = int(100 * (1 - 3.0 * Min3(R, G, B) / (R + G + B))); // 0~100
+    int I = (R + G + B) / 3;                                   // 0~255
+
+    int hLow  = HSIThreshold[m_object][0];
+    int hHigh = HSIThreshold[m_object][1];
+    int sLow  = HSIThreshold[m_object][2];
+    int sHigh = HSIThreshold[m_object][3];
+    int iLow  = HSIThreshold[m_object][4];
+    int iHigh = HSIThreshold[m_object][5];
+
+    // H 阈值检查（支持跨越 0°：hLow > hHigh 时用 OR）
+    bool hOK;
+    if (hHigh >= hLow)
+        hOK = (H >= hLow && H <= hHigh);
+    else
+        hOK = (H >= hLow || H <= hHigh);
+
+    return hOK && (S >= sLow && S <= sHigh) && (I >= iLow && I <= iHigh);
 }
 
 void ColorDlg::onSample()
@@ -893,76 +930,36 @@ void ColorDlg::onSample()
         return;
     }
 
-    // ── A+B 采样：全量迭代 + 直方图 + 记录全部像素 + 平均调滑块 ──
+    // ── MFC 意图：逐像素用当前阈值筛选 ──
     QRect r = sampleRect.intersected(img.rect());
     if (r.isEmpty()) return;
 
-    // 清空旧采样数据（MFC 行为）
+    // 清空旧采样数据
     m_vecColorSet.clear();
     memset(yi, 0, sizeof(yi));
 
-    long sumH = 0, sumS = 0, sumI = 0;
-    int count = 0;
-
+    int matched = 0;
     for (int y = r.top(); y <= r.bottom(); ++y) {
         for (int x = r.left(); x <= r.right(); ++x) {
             QRgb rgb = img.pixel(x, y);
             int R = qRed(rgb), G = qGreen(rgb), B = qBlue(rgb);
-            if (R + G + B == 0) continue;
-            int Ival = (R + G + B) / 3;
-            if (Ival >= 0 && Ival < 255) yi[Ival]++;
-
-            // 记录选区内每一个像素坐标
-            m_vecColorSet.append(QPoint(x, y));
-
-            // 与 DisplayDlg::RGBToHS 完全相同的 HSI 公式
-            int h = int(10.0 * HLUT[R][G][B]);       // 0-3600
-            int s = int(100.0 * (1.0 - 3.0 * Min3(R, G, B) / (R + G + B))); // 0-100
-            sumH += h;
-            sumS += s;
-            sumI += Ival;
-            count++;
+            if (isPixelMatchingThreshold(R, G, B)) {
+                m_vecColorSet.append(QPoint(x, y));
+                int Ival = (R + G + B) / 3;
+                if (Ival >= 0 && Ival < 255) yi[Ival]++;
+                matched++;
+            }
         }
     }
-    if (count == 0) return;
 
-    int avgH = sumH / count;
-    int avgS = sumS / count;
-    int avgI = sumI / count;
+    Debug::get()->print(QString("[Color] Threshold-filtered: %1 pixels matched")
+        .arg(matched).toStdWString().c_str());
 
-    Debug::get()->print(QString("[Color] Sampled %1 pixels, avg H=%2 S=%3 I=%4")
-        .arg(count).arg(avgH).arg(avgS).arg(avgI).toStdWString().c_str());
-
-    // 阻塞信号，批量更新滑块（避免中间态触犯约束）
-    scrollBarHMin->blockSignals(true);
-    scrollBarHMax->blockSignals(true);
-    scrollBarSMin->blockSignals(true);
-    scrollBarSMax->blockSignals(true);
-    scrollBarIMin->blockSignals(true);
-    scrollBarIMax->blockSignals(true);
-
-    scrollBarHMin->setValue(qMax(0, avgH - H_SAMPLE_OFFSET));
-    scrollBarHMax->setValue(qMin(H_RANGE_MAX, avgH + H_SAMPLE_OFFSET));
-    scrollBarSMin->setValue(qMax(0, avgS - S_SAMPLE_OFFSET));
-    scrollBarSMax->setValue(qMin(S_RANGE_MAX, avgS + S_SAMPLE_OFFSET));
-    scrollBarIMin->setValue(qMax(0, avgI - I_SAMPLE_OFFSET));
-    scrollBarIMax->setValue(qMin(I_RANGE_MAX, avgI + I_SAMPLE_OFFSET));
-
-    scrollBarHMin->blockSignals(false);
-    scrollBarHMax->blockSignals(false);
-    scrollBarSMin->blockSignals(false);
-    scrollBarSMax->blockSignals(false);
-    scrollBarIMin->blockSignals(false);
-    scrollBarIMax->blockSignals(false);
-
-    // 手动同步（因为信号被阻塞过）
-    onScrollBarChanged();
-
-    // 重绘色环（显示全部 m_vecColorSet 采样点）
+    // 重绘色环（在 HSI 空间标注所有匹配像素的位置）
     drawHSIRing();
+    // 刷新亮度直方图（只显示匹配像素的 I 分布）
     drawBrightnessHistogram();
-
-    // 刷新预览以显示采样点
+    // 刷新预览框（显示匹配点在预览图上的位置）
     redrawPreview();
 }
 

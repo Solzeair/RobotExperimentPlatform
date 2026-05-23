@@ -14,7 +14,7 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     : CFrameLessWidgetBase(parent)
 {
     // 保持主窗口的宽度不变，只减小高度
-    this->setMinimumSize(1200, 700);
+    this->setMinimumSize(1400, 700);
 
     // 将窗口移动到屏幕正中央
     QScreen* screen = QGuiApplication::primaryScreen();
@@ -82,6 +82,7 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
 
     ColorDlg* colorDlg = new ColorDlg(myTabWidget);
     myTabWidget->addTab(colorDlg, "Color");       // 采色
+    m_pColorDlg = colorDlg;
 
     MatchDlg_5vs5* matchDlg = new MatchDlg_5vs5(myTabWidget);
     matchDlg->setDisplayDlg(displayDlg);  // 设置DisplayDlg指针
@@ -176,22 +177,34 @@ void QtWidgetDesign::closeEvent(QCloseEvent* event)
             QMessageBox::Save);
 
         if (ret == QMessageBox::Save) {
-            // 保存标定数据
             m_pDemarcateDlg->saveCalibration();
-            // 保存后继续执行基类关闭事件
-            CFrameLessWidgetBase::closeEvent(event);
         }
-        else if (ret == QMessageBox::Discard) {
-            // 不保存，继续关闭
-            CFrameLessWidgetBase::closeEvent(event);
-        }
-        else {
-            // Cancel：取消关闭
+        else if (ret == QMessageBox::Cancel) {
             event->ignore();
+            return;
         }
+        // Discard：继续检查下一个
     }
-    else {
-        // 没有未保存数据，正常执行基类关闭事件
-        CFrameLessWidgetBase::closeEvent(event);
+
+    // 检查采色页面是否有未保存的数据
+    if (m_pColorDlg && m_pColorDlg->hasUnsavedData()) {
+        QMessageBox::StandardButton ret = QMessageBox::question(
+            this,
+            "提示",
+            "颜色信息未保存，是否保存？",
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
+            QMessageBox::Save);
+
+        if (ret == QMessageBox::Save) {
+            m_pColorDlg->saveData();
+        }
+        else if (ret == QMessageBox::Cancel) {
+            event->ignore();
+            return;
+        }
+        // Discard：继续
     }
+
+    // 所有检查通过，正常关闭
+    CFrameLessWidgetBase::closeEvent(event);
 }

@@ -43,6 +43,8 @@ public:
     static ColorDlg* getInstance(); // 获取单例实例
     const int(*getHSIThreshold())[6] { return HSIThreshold; } // 获取HSI阈值
     int currentObject() const { return m_object; }            // 获取当前选中对象
+    bool hasUnsavedData() const { return !m_isSaved; }        // 是否有未保存的修改
+    void saveData();                                          // 保存颜色数据（供外部调用）
 
 public slots:
     void updateDisplayImage(const QPixmap& pixmap);
@@ -123,5 +125,6 @@ private:
     void redrawPreview();                 // 在 m_pDisplayLabel 上重绘预览及覆盖层
     void sampleAtImageRect(const QRect& imgRect); // 在原始图像坐标的矩形上采样
     void sampleAtImagePoint(const QPoint& imgPt); // 在原始图像坐标的点附近采样
+    bool isPixelMatchingThreshold(int R, int G, int B) const; // 判断像素是否匹配当前 HSI 阈值
 
 };
