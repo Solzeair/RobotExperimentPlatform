@@ -259,6 +259,7 @@ private:
     bool IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart);
     void IdentifyAll();
     void IdentiRobo(int ObjectCount);
+    void IdentiRoboFromTargets(QPoint targets[], double normalTheta[], int count, bool isOpponent);
 
     void BallPosFilter();
     int FindRobotID(QPoint RP1, QPoint RP2);
@@ -333,6 +334,7 @@ private:
     int stackx[StackSize];
     int stacky[StackSize];
     int stackPointer;
+    int m_lastBlobCount = 0;  // IdentifySearchLUT 最近一次泛洪填充的像素计数（对应 MFC sum）
     bool pop(int& x, int& y);
     bool push(int x, int y);
     void emptyStack();
