@@ -256,7 +256,7 @@ private:
     void StartTest();
 
     bool FindPixel(int object, int m, int n, unsigned char* P);
-    bool IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart);
+    bool IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart, bool isBall = false);
     void IdentifyAll();
     void IdentiRobo(int ObjectCount);
     void IdentiRoboFromTargets(QPoint targets[], double normalTheta[], int count, bool isOpponent);

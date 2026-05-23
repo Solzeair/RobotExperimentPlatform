@@ -561,6 +561,15 @@ void DisplayDlg::ShowRunTest(bool ImageSeg)
             memcpy(m_pDispBitmap, tempBuf, DISPLAY_W * DISPLAY_H * 3);
             m_pIdentify = m_pDispBitmap;
             IdentifyAll();
+
+            // 保存首帧识别结果作为滤波基线
+            // 避免第一个定时器帧误检时冲掉正确位置
+            // 对应 MFC: StartTest() 中 robotBk[i] = robotInfor[i]; ballBk = ballInfor;
+            for (int k = 0; k < MAX_ROBOT_NUM; k++) {
+                robotBk[k] = robotInfor[k];
+                OpprobotBk[k] = OpprobotInfor[k];
+            }
+            ballBk = ballInfor;
         }
         delete[] tempBuf;
     }
@@ -1177,7 +1186,7 @@ bool DisplayDlg::FindPixel(int object, int m, int n, unsigned char* P)
 // 严格参考 MFC IdentifySearchLUT（E:\bot\RobotFootball\DisplayDlg.cpp:856）
 // 改动：适配 Qt 的 top-down 缓冲区布局（3 字节/像素 unsigned char*）
 
-bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart)
+bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart, bool isBall)
 {
     int sum = 0, sumx = 0, sumy = 0;
     int x, y, y1;
@@ -1259,12 +1268,24 @@ bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin,
     // 保存像素计数（对应 MFC m_TargetN.num = sum）
     m_lastBlobCount = sum;
 
-    // 尺寸和形状检查（与 MFC 一致）
+    // 尺寸和形状检查
+    // 球专用约束（对应 MFC SeachOppAndBall 第 1480-1484 行）：
+    //   球的宽高各 2~15 像素，排除大面积噪声
+    // 非球约束（对应 MFC 第 1487-1489 行）：
+    //   宽高各 2~25 像素
     if (sum >= SizeMin && sum <= SizeMax)
     {
-        // 形状检查：宽高差不能超过 20（排除长条形误检）
-        if (abs((m_xRight - m_xLeft) - (m_yBottom - m_yTop)) > 20)
-            return false;
+        int bw = m_xRight - m_xLeft;
+        int bh = m_yBottom - m_yTop;
+        if (isBall) {
+            // 球：宽高各 2~15（MFC SeachOppAndBall BALL 分支）
+            if (bw < 2 || bw > 15 || bh < 2 || bh > 15)
+                return false;
+        } else {
+            // 非球：宽高各 2~25（MFC SeachOppAndBall OPP 分支）
+            if (bw < 2 || bw > 25 || bh < 3 || bh > 25)
+                return false;
+        }
 
         // 计算色块质心（与 MFC m_Target 一致）
         m_Target[tab].setX(sumx / sum);
@@ -1404,7 +1425,7 @@ void DisplayDlg::IdentifyAll()
                 yTopTem = m_yTop;   yBottomTem = m_yBottom;
                 m_xLeft = m; m_xRight = 0; m_yTop = n; m_yBottom = 0;
 
-                if (IdentifySearchLUT(QT_BALL, i, j, 30, 300, pTest))
+                if (IdentifySearchLUT(QT_BALL, i, j, 30, 300, pTest, true))
                 {
                     int cx = (m_xLeft + m_xRight) / 2;
                     int cy = (m_yTop + m_yBottom) / 2;
