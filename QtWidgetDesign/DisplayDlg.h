@@ -343,6 +343,7 @@ private:
     double NormalTheta[20];
     double m_theta;
     double m_Length;
+    double m_PatchAngle;  // 色块 PCA 主方向角 (IdentifySearchLUT 计算, IdentiRobo 使用)
     bool patchConnect;    // 小块是否连接
     bool m_BalLo;
 

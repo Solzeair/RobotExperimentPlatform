@@ -158,6 +158,7 @@ DisplayDlg::DisplayDlg(QWidget* parent)
     , m_BalLo(false)
     , m_fps(0.0)
     , m_Length(7.5)
+    , m_PatchAngle(0.0)
     , m_overlayWidget(nullptr)
 {
     // 初始化图像数据
@@ -1150,6 +1151,7 @@ bool DisplayDlg::FindPixel(int object, int m, int n, unsigned char* P)
 bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart)
 {
     int sum = 0, sumx = 0, sumy = 0;
+    double sumxx = 0, sumyy = 0, sumxy = 0;
     int x, y, y1;
     bool spanLeft, spanRight;
     int m = m_ImageSize.width();
@@ -1193,6 +1195,9 @@ bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin,
             sum++;
             sumx += x;
             sumy += y1;
+            sumxx += (double)x * x;
+            sumyy += (double)y1 * y1;
+            sumxy += (double)x * y1;
 
             // 更新边界框
             if (x <= m_xLeft) m_xLeft = x;
@@ -1236,6 +1241,27 @@ bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin,
         // 计算色块质心（与 MFC m_Target 一致）
         m_Target[tab].setX(sumx / sum);
         m_Target[tab].setY(sumy / sum);
+
+        // PCA 求色块主方向角，替代旧版边界框宽高比估算（仅 0°/90°）
+        {
+            double cx = (double)sumx / sum;
+            double cy = (double)sumy / sum;
+            double mu20 = sumxx / sum - cx * cx;
+            double mu02 = sumyy / sum - cy * cy;
+            double mu11 = sumxy / sum - cx * cy;
+            double delta = mu20 - mu02;
+            // 退化保护：圆形色块无主方向，回退到边界框判断
+            if (fabs(delta) < 1e-6 && fabs(mu11) < 1e-6)
+            {
+                int w = m_xRight - m_xLeft;
+                int h = m_yBottom - m_yTop;
+                m_PatchAngle = (w >= h) ? 0.0 : M_PI / 2;
+            }
+            else
+            {
+                m_PatchAngle = 0.5 * atan2(2.0 * mu11, delta);
+            }
+        }
         return true;
     }
     return false;
@@ -1469,23 +1495,8 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
                         {
                             TeamTarget[NumTeam] = QPoint(x, y);
 
-                            // 通过色块边界框计算法线角度
-                            // 对应 MFC SearchTeam 中的椭圆拟合
-                            int w = m_xRight - m_xLeft;
-                            int h = m_yBottom - m_yTop;
-                            if (w > 3 && h > 3)
-                            {
-                                // 简化版：用边界框的宽高比估算角度
-                                // 宽 > 高 → 水平方向，高 > 宽 → 垂直方向
-                                if (w >= h)
-                                    NormalTheta[NumTeam] = 0.0;      // 水平
-                                else
-                                    NormalTheta[NumTeam] = M_PI / 2; // 垂直
-                            }
-                            else
-                            {
-                                NormalTheta[NumTeam] = 0.0;
-                            }
+                            // 用 PCA 主方向替代边界框宽高比，支持任意角度
+                            NormalTheta[NumTeam] = m_PatchAngle;
                             NumTeam++;
                         }
                     }
