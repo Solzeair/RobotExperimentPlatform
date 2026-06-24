@@ -10,8 +10,12 @@
       <AdditionalDependencies>USB340HID61.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /y "$(ProjectDir)USB340HID61.dll" "$(SolutionDir)x64\Debug\"
-xcopy /y "$(TargetDir)$(TargetName).exe" "$(SolutionDir)x64\Debug\"</Command>
+      <!-- 固定复制到解决方案根的 x64\Debug（QtWidgetDesign 运行目录）。
+           不用 $(SolutionDir)：单独生成本项目时它会退化为项目目录，导致文件被丢到 USB340Proxy\x64\Debug。
+           $(MSBuildProjectDirectory) 始终指向本 vcxproj 所在的 USB340Proxy 目录，回退一级即为解决方案根。 -->
+      <Command>if not exist "$(MSBuildProjectDirectory)\..\x64\Debug\" mkdir "$(MSBuildProjectDirectory)\..\x64\Debug\"
+xcopy /y "$(ProjectDir)USB340HID61.dll" "$(MSBuildProjectDirectory)\..\x64\Debug\"
+xcopy /y "$(TargetDir)$(TargetName).exe" "$(MSBuildProjectDirectory)\..\x64\Debug\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup />

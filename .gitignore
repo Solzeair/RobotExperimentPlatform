@@ -74,3 +74,8 @@ moc_*.h
 qrc_*.cpp
 uic_*.h
 qtvars.*
+
+# 其他
+.vscode/
+.claude/
+*.dat
