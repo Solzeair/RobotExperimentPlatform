@@ -648,6 +648,11 @@ bool DemarcateDlg::saveCalibration()
 void DemarcateDlg::onButtonSave()
 {
     if (saveCalibration()) {
+        // 保存成功后清除图像上的 25 个红色十字标记，并刷新显示
+        if (m_pDispDlg) {
+            m_pDispDlg->clearCalibPoints();
+            m_pDispDlg->ShowSingle();
+        }
         QMessageBox::information(this, "Saved",
             "Calibration data has been saved.");
     }

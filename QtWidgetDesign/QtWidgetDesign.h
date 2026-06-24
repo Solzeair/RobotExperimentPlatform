@@ -12,6 +12,7 @@
 
 // 前向声明
 class DemarcateDlg;
+class ColorDlg;
 
 // 主窗口继承无边框基类
 class QtWidgetDesign : public CFrameLessWidgetBase
@@ -27,5 +28,6 @@ protected:
 
 private:
     DemarcateDlg* m_pDemarcateDlg = nullptr;
+    ColorDlg*     m_pColorDlg     = nullptr;
 
 };

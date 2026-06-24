@@ -99,6 +99,70 @@ typedef struct {
     int num;
 } OppInf;
 
+// ========================================================================
+// OverlayWidget - 透明覆盖层控件
+// ========================================================================
+// 功能说明：
+//   此类是一个透明的 QWidget，叠在 displayLabel（摄像头画面）上方，
+//   专门用于在采色模式（COLOR_SET）下绘制鼠标框选的红框矩形。
+//
+// 设计动机（对比 MFC 版本）：
+//   MFC 中使用 CDC::SetROP2(R2_NOTXORPEN) 直接在屏幕 DC 上以 XOR
+//   模式画红框，矩形和摄像头画面在同一个像素层，互不干扰。
+//   Qt 中若在 QLabel 上直接用 QPainter 画矩形，会被 setPixmap()
+//   设置的图像覆盖（QLabel 绘制顺序：先画 pixmap，后画控件内容）。
+//   因此引入独立的透明覆盖层，将"图像显示"和"框选绘制"分离到
+//   两个独立的控件层，达到与 MFC XOR 模式相同的效果：
+//   - displayLabel 只负责显示摄像头画面，不被框选操作污染
+//   - OverlayWidget 只负责画红框，不影响底层图像数据
+//
+// 工作流程：
+//   1. 用户切换到"采色"标签页 → SelectSetStatus(COLOR_SET)
+//      → 显示覆盖层并启用鼠标追踪
+//   2. 用户在覆盖层上按下鼠标 → 记录框选起点
+//   3. 用户拖动鼠标 → 实时更新矩形范围，通过 update() 触发重绘
+//   4. paintEvent 中用 XOR 组合模式绘制红色矩形线框
+//   5. ColorDlg::onZoom() 通过 DisplayDlg::GetRect() 获取框选矩形
+//      → 从原始帧缓冲 m_pDispSingle 中裁切放大区域
+//   6. 用户切换到其他标签页 → SelectSetStatus(NONE)
+//      → 隐藏覆盖层
+// ========================================================================
+class OverlayWidget : public QWidget
+{
+public:
+    explicit OverlayWidget(QWidget* parent = nullptr);
+
+    // 设置框选矩形（图像坐标），标记为有效并触发重绘
+    void setSelectionRect(const QRect& r);
+
+    // 清除框选矩形，标记为无效并触发重绘
+    void clearSelectionRect();
+
+    // 获取当前框选矩形（图像坐标）
+    QRect getSelectionRect() const { return m_selectionRect; }
+
+    // 框选矩形是否有效（用户是否已完成至少一次框选）
+    bool hasSelection() const { return m_hasSelection; }
+
+protected:
+    // 重绘事件：用 XOR 模式绘制红色矩形线框
+    // 每次调用 update() 时自动触发，先清除旧矩形再画新矩形
+    void paintEvent(QPaintEvent* event) override;
+
+    // 鼠标按下：记录框选起点，初始化一个 1×1 的矩形
+    void mousePressEvent(QMouseEvent* event) override;
+
+    // 鼠标拖动：更新矩形终点，调用 update() 触发重绘
+    // 由于 paintEvent 每次从干净状态重画 XOR 矩形，
+    // 视觉效果等同于 MFC 的"擦旧画新"两步操作
+    void mouseMoveEvent(QMouseEvent* event) override;
+
+private:
+    QRect m_selectionRect;   // 框选矩形（覆盖层控件坐标系）
+    bool m_hasSelection;     // 框选矩形是否有效
+};
+
+
 class DisplayDlg : public QWidget
 {
     Q_OBJECT
@@ -134,6 +198,13 @@ public:
     // Remove all calibration point markers (called on reset).
     void clearCalibPoints() { m_calibPoints.clear(); }
 
+    // 清除采色模式覆盖层上的框选矩形
+    // 供 ColorDlg 在切换测试模式时调用，清除左侧显示区的红框
+    void clearOverlaySelection();
+
+    // 设置采色对话框实例指针（由 QtWidgetDesign 构造函数调用）
+    void setColorDlg(class ColorDlg* dlg);
+
     // Accessor for the single-grab pixel buffer.
     // Used by DemarcateDlg::applyPerspectiveCorrection() to read and
     // write back the camera frame before the polynomial fit is run.
@@ -156,7 +227,10 @@ public:
     void SelectSetStatus(SET_STATUS s);
 
     // 颜色分析
-    QRect GetRect() const { return m_Rect; }
+    // 获取当前框选矩形（图像坐标）。
+    // 采色模式下从 OverlayWidget 读取（覆盖层坐标系，已对齐图像）；
+    // 其他模式下返回 DisplayDlg 自身的 m_Rect（如 BORDER_SET 标定模式）。
+    QRect GetRect() const;
     void ColorAnalyse(const QRect& rect, int yi[], std::vector<QPoint>& vecColorSet);
     void ColorAnalyse(const std::vector<QPoint>& pts, int yi[], std::vector<QPoint>& vecColorSet);
     int MINS(int R, int G, int B, int N);
@@ -182,9 +256,10 @@ private:
     void StartTest();
 
     bool FindPixel(int object, int m, int n, unsigned char* P);
-    bool IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart);
+    bool IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart, bool isBall = false);
     void IdentifyAll();
     void IdentiRobo(int ObjectCount);
+    void IdentiRoboFromTargets(QPoint targets[], double normalTheta[], int count, bool isOpponent);
 
     void BallPosFilter();
     int FindRobotID(QPoint RP1, QPoint RP2);
@@ -259,6 +334,7 @@ private:
     int stackx[StackSize];
     int stacky[StackSize];
     int stackPointer;
+    int m_lastBlobCount = 0;  // IdentifySearchLUT 最近一次泛洪填充的像素计数（对应 MFC sum）
     bool pop(int& x, int& y);
     bool push(int x, int y);
     void emptyStack();
@@ -281,5 +357,13 @@ private:
     // 界面控件
     QLabel* displayLabel;
     QVBoxLayout* mainLayout;
+
+    // 采色模式的透明覆盖层控件，叠在 displayLabel 上方
+    // 仅在 m_setStatus == COLOR_SET 时可见，用于绘制鼠标框选红框
+    OverlayWidget* m_overlayWidget;
+
+    // 采色对话框实际实例指针（标签页中的实例，非单例）
+    // 由 QtWidgetDesign 构造函数通过 setColorDlg() 设置
+    class ColorDlg* m_pColorDlg = nullptr;
 
 };

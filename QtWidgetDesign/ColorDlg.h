@@ -43,6 +43,8 @@ public:
     static ColorDlg* getInstance(); // 获取单例实例
     const int(*getHSIThreshold())[6] { return HSIThreshold; } // 获取HSI阈值
     int currentObject() const { return m_object; }            // 获取当前选中对象
+    bool hasUnsavedData() const { return !m_isSaved; }        // 是否有未保存的修改
+    void saveData();                                          // 保存颜色数据（供外部调用）
 
 public slots:
     void updateDisplayImage(const QPixmap& pixmap);
@@ -102,6 +104,8 @@ private:
     int m_object;                         // 当前操作对象的标识
     bool m_ImageSeg;                      // 是否开启图像分割功能
     bool m_isSaved;                       // 参数是否已保存
+    bool m_isColorTesting = false;        // 是否处于颜色测试模式（切换对象时自动触发测试）
+    bool m_isRunTesting = false;          // 是否处于动态测试模式（切换对象时不中断测试）
     int HSIThreshold[8][6];               // 各颜色HSI阈值
     QVector<QPoint> m_vecColorSet;        // 采样颜色点集合
     QVector<QPoint> m_points;             // 点选模式采集的点（放大区坐标）
@@ -123,5 +127,6 @@ private:
     void redrawPreview();                 // 在 m_pDisplayLabel 上重绘预览及覆盖层
     void sampleAtImageRect(const QRect& imgRect); // 在原始图像坐标的矩形上采样
     void sampleAtImagePoint(const QPoint& imgPt); // 在原始图像坐标的点附近采样
+    bool isPixelMatchingThreshold(int R, int G, int B); // 判断像素是否匹配当前 HSI 阈值
 
 };
