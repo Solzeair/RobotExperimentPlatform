@@ -1,6 +1,5 @@
 /*
 * 5v5比赛对话框源文件
-* 写作人 李青
 * 功能 5v5比赛控制界面逻辑实现，包含开球类型、阵型布置、点球及战术选择功能响应。
 * 策略通过插件形式实现，与标定采色接口保持一致
 */
@@ -43,25 +42,25 @@ MatchDlg_5vs5::MatchDlg_5vs5(QWidget *parent)
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     initUI();
-    // 通过插件管理器从指定路径加载策略插件
+    // 策略逻辑以独立DLL插件形式加载，便于替换不同策略实现而不重编译主程序
     PluginManager* pluginManager = PluginManager::getInstance();
     QString dllPath = QString("e:/bishe/策略/RobotStrategyDll.dll");
     pluginManager->loadPlugin(dllPath, PluginType::STRATEGY);
     m_strategyPlugin = dynamic_cast<StrategyPluginInterface*>(pluginManager->getPlugin(PluginType::STRATEGY));
-    
-    // 初始状态：禁用开始比赛按钮
+
+    // 必须先执行初始预备归位后才能开始比赛，故默认禁用开始按钮
     btnStartMatch->setEnabled(false);
 }
 
 MatchDlg_5vs5::~MatchDlg_5vs5()
 {
-    // 策略插件由插件管理器管理，不需要在此释放
+    // 策略插件由插件管理器统一管理生命周期，此处无需释放
 }
 
 void MatchDlg_5vs5::setDisplayDlg(DisplayDlg* displayDlg)
 {
     m_pDisplayDlg = displayDlg;
-    // 设置DisplayDlg指针给策略插件
+    // 策略插件需借助DisplayDlg绘制机器人轨迹与态势，故同步注入
     if (m_strategyPlugin) {
         m_strategyPlugin->setDisplayDlg(displayDlg);
     }
@@ -73,22 +72,22 @@ void MatchDlg_5vs5::applyMatchParameters()
         return;
     }
 
-    // 阵型 (0=单后卫, 1=双后卫)
+    // 阵型: 0=单后卫, 1=双后卫
     m_strategyPlugin->setFormationType(m_dan);
 
-    // 球门方向 (左半场=0, 右半场=1)
+    // 球门方向: 左半场=0, 右半场=1，策略据此决定攻防朝向
     m_strategyPlugin->setOurGoalOnRight(m_area == 1);
 
-    // 开球方 (我方=1, 对方=0)
+    // 开球方: 我方=1, 对方=0
     m_strategyPlugin->setOurKickoff(m_attack == 1);
 
-    // 点球模式 (m_dqdirect=点球方向, m_dqsmd=点球模式)
+    // 点球参数: m_dqdirect 为射门方向, m_dqsmd 为点球执行模式
     m_strategyPlugin->setPenaltyKickMode(m_dqdirect, m_dqsmd);
 
-    // 策略选择
+    // 选择当前策略编号
     m_strategyPlugin->selectStrategy(StrategyNum);
 
-    // 设置归位参数
+    // 归位开关: 控制机器人是否在死球后自动返回预设位点
     m_strategyPlugin->setParameter("return2pt", m_return2pt ? 1.0 : 0.0);
 }
 
@@ -108,7 +107,7 @@ void MatchDlg_5vs5::initUI()
     titleLabel->setFont(font);
     controlLayout->addWidget(titleLabel);
 
-    // 单双后卫
+    // 单双后卫选项
     QHBoxLayout *danShuangLayout = new QHBoxLayout();
     QLabel *danShuangLabel = new QLabel("单双后卫", this);
     danShuangLabel->setFont(font);
@@ -117,7 +116,7 @@ void MatchDlg_5vs5::initUI()
     radioDan->setFont(font);
     radioShuang = new QRadioButton("双后卫", this);
     radioShuang->setFont(font);
-    // 添加到ButtonGroup实现单选互斥
+    // 用ButtonGroup管理互斥的单选关系，便于按id读取选中项
     m_danShuangGroup = new QButtonGroup(this);
     m_danShuangGroup->addButton(radioDan, 0);
     m_danShuangGroup->addButton(radioShuang, 1);
@@ -126,7 +125,7 @@ void MatchDlg_5vs5::initUI()
     danShuangLayout->addWidget(radioShuang);
     controlLayout->addLayout(danShuangLayout);
 
-    // 开球方
+    // 开球方选项
     QHBoxLayout *kickTeamLayout = new QHBoxLayout();
     QLabel *kickTeamLabel = new QLabel("开球方", this);
     kickTeamLabel->setFont(font);
@@ -135,7 +134,6 @@ void MatchDlg_5vs5::initUI()
     radioAttack->setFont(font);
     radioDefend = new QRadioButton("对方", this);
     radioDefend->setFont(font);
-    // 添加到ButtonGroup实现单选互斥
     m_kickTeamGroup = new QButtonGroup(this);
     m_kickTeamGroup->addButton(radioAttack, 0);
     m_kickTeamGroup->addButton(radioDefend, 1);
@@ -144,7 +142,7 @@ void MatchDlg_5vs5::initUI()
     kickTeamLayout->addWidget(radioDefend);
     controlLayout->addLayout(kickTeamLayout);
 
-    // 左右半场
+    // 左右半场选项，决定球门朝向与攻防方向
     QHBoxLayout *areaLayout = new QHBoxLayout();
     QLabel *areaLabel = new QLabel("左右半场", this);
     areaLabel->setFont(font);
@@ -153,7 +151,6 @@ void MatchDlg_5vs5::initUI()
     radioLeftArea->setFont(font);
     radioRightArea = new QRadioButton("右半场", this);
     radioRightArea->setFont(font);
-    // 添加到ButtonGroup实现单选互斥
     m_areaGroup = new QButtonGroup(this);
     m_areaGroup->addButton(radioLeftArea, 0);
     m_areaGroup->addButton(radioRightArea, 1);
@@ -162,7 +159,7 @@ void MatchDlg_5vs5::initUI()
     areaLayout->addWidget(radioRightArea);
     controlLayout->addLayout(areaLayout);
 
-    // 开球方式
+    // 开球方式分组，含普通/点球/门球/任意球/争球/收车及测试模式
     QGroupBox *kickGroupBox = new QGroupBox("开球方式", this);
     kickGroupBox->setFont(font);
     QGridLayout *kickGridLayout = new QGridLayout(kickGroupBox);
@@ -198,7 +195,7 @@ void MatchDlg_5vs5::initUI()
 
     controlLayout->addWidget(kickGroupBox);
 
-    // 点球选择
+    // 点球射门方向选择
     QHBoxLayout *dqSelectLayout = new QHBoxLayout();
     QLabel *dqSelectLabel = new QLabel("点球选择", this);
     dqSelectLabel->setFont(font);
@@ -219,7 +216,7 @@ void MatchDlg_5vs5::initUI()
     dqSelectLayout->addWidget(radioRightDirect);
     controlLayout->addLayout(dqSelectLayout);
 
-    // 守门选择
+    // 守门员防守站位选择
     QHBoxLayout *goalkeeperLayout = new QHBoxLayout();
     QLabel *goalkeeperLabel = new QLabel("守门选择", this);
     goalkeeperLabel->setFont(font);
@@ -240,7 +237,7 @@ void MatchDlg_5vs5::initUI()
     goalkeeperLayout->addWidget(radioRightGoalkeeper);
     controlLayout->addLayout(goalkeeperLayout);
 
-    // 细节处理
+    // 细节处理选项：色标纠错与辨识对方均默认开启，提升视觉识别鲁棒性
     QHBoxLayout *detailsLayout = new QHBoxLayout();
     QLabel *detailsLabel = new QLabel("细节处理", this);
     detailsLabel->setFont(font);
@@ -255,7 +252,7 @@ void MatchDlg_5vs5::initUI()
     detailsLayout->addWidget(checkIdentifyOpponent);
     controlLayout->addLayout(detailsLayout);
 
-    // 细节处理第二行
+    // 细节处理第二行：RobotCheck与归位开关
     QHBoxLayout *detailsRow2Layout = new QHBoxLayout();
     QCheckBox *checkRobotCheck = new QCheckBox("RobotCheck", this);
     checkRobotCheck->setFont(font);
@@ -265,7 +262,7 @@ void MatchDlg_5vs5::initUI()
     detailsRow2Layout->addWidget(checkReturn);
     controlLayout->addLayout(detailsRow2Layout);
 
-    // 比赛控制按钮
+    // 比赛控制按钮：初始预备、开始比赛、停止
     QHBoxLayout *matchControlLayout = new QHBoxLayout();
     btnPrepare = new QPushButton("初始预备", this);
     btnPrepare->setFont(font);
@@ -278,7 +275,7 @@ void MatchDlg_5vs5::initUI()
     matchControlLayout->addWidget(btnStopMatch);
     controlLayout->addLayout(matchControlLayout);
 
-    // 策略选择
+    // 策略编号下拉选择
     QHBoxLayout *strategyLayout = new QHBoxLayout();
     QLabel *strategyLabel = new QLabel("策略", this);
     strategyLabel->setFont(font);
@@ -290,7 +287,7 @@ void MatchDlg_5vs5::initUI()
     strategyLayout->addWidget(comboStrategy);
     controlLayout->addLayout(strategyLayout);
 
-    // 策略参数修改
+    // 策略参数修改入口，点击后启动外部参数配置程序
     QHBoxLayout *strategyParamLayout = new QHBoxLayout();
     QLabel *strategyParamLabel = new QLabel("策略参数修改", this);
     strategyParamLabel->setFont(font);
@@ -303,20 +300,20 @@ void MatchDlg_5vs5::initUI()
     strategyParamLayout->addStretch();
     controlLayout->addLayout(strategyParamLayout);
 
-    // 在 controlLayout 底部添加弹性空间，让内容在垂直方向上铺满
+    // 底部弹性占位使内容上对齐，窗口放大时空白集中在底部
     controlLayout->addStretch();
 
-    // 将控制区域添加到主布局，并设置 stretch 因子使其填满剩余空间
-    mainLayout->addLayout(controlLayout, 1);  // stretch 因子为 1
+    // 控制区域占用主布局全部剩余高度
+    mainLayout->addLayout(controlLayout, 1);  // stretch=1
 
-    // 连接信号槽
+    // 按钮与下拉框的信号槽连接
     connect(btnStartMatch, SIGNAL(clicked()), this, SLOT(onButtonStart()));
     connect(btnStopMatch, SIGNAL(clicked()), this, SLOT(onButtonStop()));
     connect(comboStrategy, SIGNAL(currentIndexChanged(int)), this, SLOT(onStrategyChanged(int)));
     connect(btnPrepare, SIGNAL(clicked()), this, SLOT(onButtonPrepare()));
     connect(btnStrategyParam, SIGNAL(clicked()), this, SLOT(onButtonStrategyParam()));
 
-    // 连接单选按钮
+    // 所有单选按钮共用同一槽，选中即实时同步参数到策略插件
     connect(radioDan, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
     connect(radioShuang, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
     connect(radioAttack, SIGNAL(clicked()), this, SLOT(onRadioButtonClicked()));
@@ -341,7 +338,7 @@ void MatchDlg_5vs5::onButtonStart()
         return;
     }
 
-    // 读取界面参数
+    // 将界面选择同步为内部数值参数，供策略插件使用
     m_attack = radioAttack->isChecked() ? 1 : 0;
     m_area = radioLeftArea->isChecked() ? 0 : 1;
     m_dan = radioDan->isChecked() ? 0 : 1;
@@ -354,10 +351,10 @@ void MatchDlg_5vs5::onButtonStart()
     else
         m_dqdirect = 1;
 
-    // 初始化策略
+    // 初始化策略内部状态
     m_strategyPlugin->initialize(0);
 
-    // 应用比赛参数到插件
+    // 将比赛参数下发到策略插件
     applyMatchParameters();
 
     m_isMatchRunning = true;
@@ -365,13 +362,13 @@ void MatchDlg_5vs5::onButtonStart()
     QMessageBox::information(this, "比赛开始", "比赛已开始");
     Debug::get()->print("比赛开始：比赛已启动，机器人进入比赛状态");
     
-    // 禁用开始比赛和初始预备按钮
+    // 比赛进行中禁用开始与预备按钮，防止重复触发
     btnStartMatch->setEnabled(false);
     if (btnPrepare) {
         btnPrepare->setEnabled(false);
     }
-    
-    // 归位选项设为false
+
+    // 进入比赛状态后取消归位，避免机器人自行撤回位点
     m_return2pt = false;
 }
 
@@ -381,7 +378,7 @@ void MatchDlg_5vs5::onButtonStop()
     qDebug() << "Match stopped!";
     Debug::get()->print("停止：比赛已停止，机器人进入待命状态");
     
-    // 启用初始预备按钮
+    // 停止后恢复预备按钮，允许重新归位准备下一场比赛
     if (btnPrepare) {
         btnPrepare->setEnabled(true);
     }
@@ -407,14 +404,14 @@ void MatchDlg_5vs5::onButtonPrepare()
         return;
     }
 
-    // 根据单双后卫选择策略
+    // 记录当前选择的阵型类型便于调试追踪
     if (radioDan->isChecked()) {
         Debug::get()->print("策略选择：单后卫策略");
     } else {
         Debug::get()->print("策略选择：双后卫策略");
     }
 
-    // 更新界面参数
+    // 同步界面参数到内部变量
     m_attack = radioAttack->isChecked() ? 1 : 0;
     m_area = radioLeftArea->isChecked() ? 0 : 1;
     m_dan = radioDan->isChecked() ? 0 : 1;
@@ -427,10 +424,10 @@ void MatchDlg_5vs5::onButtonPrepare()
     else
         m_dqdirect = 1;
 
-    // 应用比赛参数到插件
+    // 下发比赛参数到策略插件
     applyMatchParameters();
 
-    // 机器人归位
+    // 驱动机器人回到开球阵型位点
     m_strategyPlugin->parkRobots();
 
     if (m_pDisplayDlg) {
@@ -463,7 +460,7 @@ void MatchDlg_5vs5::onButtonStrategyParam()
 }
 void MatchDlg_5vs5::onRadioButtonClicked()
 {
-    // 更新数据变量
+    // 根据当前选中状态刷新各参数变量
     if (radioDan->isChecked())
         m_dan = 0;
     else if (radioShuang->isChecked())
@@ -491,6 +488,6 @@ void MatchDlg_5vs5::onRadioButtonClicked()
     else
         m_dqdirect = 1;
 
-    // 实时应用设置到策略
+    // 实时下发参数到策略，使界面调整即刻生效
     applyMatchParameters();
 }

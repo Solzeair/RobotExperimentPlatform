@@ -8,15 +8,12 @@ using namespace Pylon;
 using namespace Basler_UsbCameraParams;
 
 /*
-* Camera.h - 相机操作和参数管理类头文件
-* 
-* 功能：
-* 1. 定义相机操作的接口和参数管理
-* 2. 提供相机打开、关闭、开始/停止抓取的方法
-* 3. 管理相机参数（亮度、增益、对比度、快门、RGB通道）
-* 4. 提供从配置文件读取和保存相机参数的方法
-* 5. 支持实际相机图像捕获和数据转换
-* 6. 打开的是USB连接的Basler相机
+* Camera.h - Basler USB 相机封装（单例）
+*
+* 设计要点：
+* - 私有构造 + 静态实例，保证全局唯一相机句柄，避免重复打开设备
+* - 既是参数管理器（读写配置），也是抓取控制器，统一对外接口
+* - 暴露 RGB/增益/快门等参数，底层映射到 Basler GenApi 节点
 */
 
 class Camera : private Pylon::CConfigurationEventHandler
@@ -49,7 +46,7 @@ public:
     bool StartGrabbing();
     void StopGrabbing();
     void Close();
-    // MFC版本中存在的方法
+    // 兼容旧 MFC 调用约定的接口签名（void* 透传结果）
     bool RetrieveResult(void* ptrResult);
     bool GrabOne(void* ptrResult);
     bool IsCameraDeviceRemoved();
@@ -58,7 +55,7 @@ public:
 private:
     void OnCameraDeviceRemoved(CInstantCamera & camera)override;
     
-    // 垃圾回收器，确保单例模式的正确释放
+    // 嵌入式 GC：进程退出时释放单例，避免相机句柄泄漏
     class GarbageCollector {
     public:
         ~GarbageCollector();
@@ -85,7 +82,7 @@ private:
     void SetBGain(double gain);
     void SetRGain(double gain);
     
-    // 图像处理方法
+    // Bayer 解码：按传感器行序（GB/RG/BG/GR）分别处理，输出 RGB
     void ProcessGBLines(unsigned char* pDest, const unsigned char* pSource, int width, int height, unsigned int lineoffset);
     void ProcessRGLines(unsigned char* pDest, const unsigned char* pSource, int width, int height, unsigned int lineoffset);
     void ProcessBGLines(unsigned char* pDest, const unsigned char* pSource, int width, int height, unsigned int lineoffset);

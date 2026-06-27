@@ -8,17 +8,17 @@
 #include <QMouseEvent>
 #include <cstring>
 
-// HLUT 全局查找表（定义在 DisplayDlg.cpp），与 FindPixel 使用同一份数据
+// HLUT 全局查找表（定义在 DisplayDlg.cpp），与 FindPixel 共用同一份数据
 extern int HLUT[256][256][256];
 
-// 与 DisplayDlg 完全一致的 MIN 宏，用于 HSI 饱和度计算
+// HSI 饱和度计算用的三分量最小值，实现须与 DisplayDlg 完全一致
 static inline int Min3(int a, int b, int c) {
     int t = a < b ? a : b;
     return t < c ? t : c;
 }
 
-// Note: m_lastFrame stores the most recent full-size frame; we prefer
-// using it for zoom/sampling to avoid differences in QLabel::pixmap()
+// m_lastFrame 缓存最近一帧完整原图，放大/采样统一基于它，
+// 避免直接读取 QLabel::pixmap() 因缩放产生差异
 
 
 ColorDlg::ColorDlg(QWidget* parent)
@@ -35,11 +35,11 @@ ColorDlg::ColorDlg(QWidget* parent)
     , m_isSaved(false)
     , brightnessGraphLabel(nullptr)
 {
-    // 设置大小策略为可伸缩
+    // 顶层窗口可随父布局伸缩
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     initUI();
-    // 不再调用drawHSIRing()，因为已经在initUI()中创建了色环
+    // 色环已在 initUI 内创建，无需再次绘制
 }
 
 ColorDlg::~ColorDlg()
@@ -48,26 +48,25 @@ ColorDlg::~ColorDlg()
 
 ColorDlg* ColorDlg::getInstance()
 {
-    static ColorDlg instance; // 静态局部变量，保证只创建一次
+    // Meyers 单例，懒加载且线程安全
+    static ColorDlg instance;
     return &instance;
 }
 
 void ColorDlg::initUI()
 {
-    // 设置字体为楷体，12号，加粗
+    // 楷体加粗，与界面其他控件风格统一
     QFont font("楷体", 12, QFont::Bold);
     setFont(font);
 
-    // 创建主布局
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(20, 0, 20, 20);
     mainLayout->setSpacing(10);
 
-    // 创建主控制布局
     QVBoxLayout* controlLayout = new QVBoxLayout();
     controlLayout->setSpacing(4);
 
-    // 标题 "采色"
+    // 界面标题
     QLabel* titleLabel = new QLabel("采色", this);
     titleLabel->setFont(font);
     controlLayout->addWidget(titleLabel);
@@ -77,7 +76,7 @@ void ColorDlg::initUI()
     QHBoxLayout* topRowLayout = new QHBoxLayout();
     topRowLayout->setSpacing(10);
 
-    // 右侧上方白色显示区域（成员变量）
+    // 预览区，承载放大图与框选/采样操作（成员变量）
     m_pDisplayLabel = new QLabel(this);
     m_pDisplayLabel->setFixedSize(220, 180);
     m_pDisplayLabel->setStyleSheet("QLabel { background-color: white; border: 1px solid black; }");
@@ -86,10 +85,11 @@ void ColorDlg::initUI()
     m_pDisplayLabel->setMouseTracking(true);
     m_pDisplayLabel->installEventFilter(this);
 
-    // 按钮组
+    // 操作按钮组（框选/放大/采样/清空）
     QVBoxLayout* btnLayout = new QVBoxLayout();
     btnLayout->setSpacing(8);
 
+    // 勾选后切换为矩形框选模式，否则为单点采样模式
     QCheckBox* rectCheckBox = new QCheckBox("Rect", this);
     rectCheckBox->setFont(font);
     rectCheckBox->setChecked(true);
@@ -122,8 +122,7 @@ void ColorDlg::initUI()
 
     m_objectGroup = new QButtonGroup(this);
 
-    // 8 个单选按钮，依次对应 m_object 0~7
-    // 主颜色单选按钮（无缩进）
+    // 主颜色单选按钮，object 编号 0~4
     struct { const char* label; int object; } radioDefs[] = {
         {"我方队色", 0},
         {"紫色", 1},
@@ -138,7 +137,7 @@ void ColorDlg::initUI()
         radioLayout->addWidget(rb);
     }
 
-    // MEM3~5
+    // 扩展对象，object 编号 5~7
     struct { const char* label; int object; } subDefs[] = {
         {"MEM3", 5},
         {"MEM4", 6},
@@ -154,7 +153,7 @@ void ColorDlg::initUI()
     m_objectGroup->button(0)->setChecked(true);
     m_object = 0;
 
-    // 切换对象时加载该对象的 HSI 阈值
+    // 切换对象时加载对应 HSI 阈值，并按当前测试模式联动刷新
     connect(m_objectGroup, &QButtonGroup::buttonClicked,
             this, [this](QAbstractButton* btn) {
         int id = m_objectGroup->id(btn);
@@ -162,10 +161,9 @@ void ColorDlg::initUI()
         if (id >= 0) {
             loadThresholdForObject(id);
             if (m_isRunTesting) {
-                // 动态测试模式：只更新对象，不中断测试
-                // IdentifyTest() 每帧读取 currentObject()，自动使用新对象
+                // 动态测试中切换对象不打断测试，下帧自动采用新对象
             } else if (m_isColorTesting) {
-                // 单帧测试模式：自动重新测试
+                // 单帧测试中切换对象则自动重新执行一次测试
                 onButtonColorTest();
             }
         }
@@ -179,7 +177,7 @@ void ColorDlg::initUI()
     HSIdisplayLabel->setStyleSheet("QLabel { background-color: white; border: 1px solid black; }");
     midLayout->addWidget(HSIdisplayLabel);
 
-    // --- 测试按钮组 ---
+    // --- 测试/存取按钮组 ---
     QVBoxLayout* testBtnLayout = new QVBoxLayout();
     testBtnLayout->setSpacing(8);
 
@@ -210,11 +208,11 @@ void ColorDlg::initUI()
     midLayout->addLayout(testBtnLayout);
     controlLayout->addLayout(midLayout);
 
-    // ── 第三行：HSI 滑块 ─────────────────────────────────────
+    // ── 第三行：HSI 六个滑块 ─────────────────────────────────
     QVBoxLayout* scrollBarLayout = new QVBoxLayout();
     scrollBarLayout->setSpacing(6);
 
-    // 色调-低
+    // 色调下限
     QHBoxLayout* hueLowLayout = new QHBoxLayout();
     QLabel* hueLowLabel = new QLabel("色调-低", this);
     hueLowLabel->setFont(font);
@@ -226,7 +224,7 @@ void ColorDlg::initUI()
     hueLowLayout->addWidget(scrollBarHMin);
     scrollBarLayout->addLayout(hueLowLayout);
 
-    // 色调-高
+    // 色调上限
     QHBoxLayout* hueHighLayout = new QHBoxLayout();
     QLabel* hueHighLabel = new QLabel("色调-高", this);
     hueHighLabel->setFont(font);
@@ -238,7 +236,7 @@ void ColorDlg::initUI()
     hueHighLayout->addWidget(scrollBarHMax);
     scrollBarLayout->addLayout(hueHighLayout);
 
-    // 饱和度-低
+    // 饱和度下限
     QHBoxLayout* satLowLayout = new QHBoxLayout();
     QLabel* satLowLabel = new QLabel("饱和度-低", this);
     satLowLabel->setFont(font);
@@ -250,7 +248,7 @@ void ColorDlg::initUI()
     satLowLayout->addWidget(scrollBarSMin);
     scrollBarLayout->addLayout(satLowLayout);
 
-    // 饱和度-高
+    // 饱和度上限
     QHBoxLayout* satHighLayout = new QHBoxLayout();
     QLabel* satHighLabel = new QLabel("饱和度-高", this);
     satHighLabel->setFont(font);
@@ -262,7 +260,7 @@ void ColorDlg::initUI()
     satHighLayout->addWidget(scrollBarSMax);
     scrollBarLayout->addLayout(satHighLayout);
 
-    // 亮度 标签和图表
+    // 亮度分布直方图
     QHBoxLayout* brightnessLayout = new QHBoxLayout();
     QLabel* brightnessLabel = new QLabel("亮度", this);
     brightnessLabel->setFont(font);
@@ -274,7 +272,7 @@ void ColorDlg::initUI()
     brightnessLayout->addWidget(brightnessGraphLabel);
     scrollBarLayout->addLayout(brightnessLayout);
 
-    // 亮度-低 标签和滑块
+    // 亮度下限
     QHBoxLayout* brightnessLowLayout = new QHBoxLayout();
     QLabel* brightnessLowLabel = new QLabel("亮度-低", this);
     brightnessLowLabel->setFont(font);
@@ -286,7 +284,7 @@ void ColorDlg::initUI()
     brightnessLowLayout->addWidget(scrollBarIMin);
     scrollBarLayout->addLayout(brightnessLowLayout);
 
-    // 亮度-高 标签和滑块
+    // 亮度上限
     QHBoxLayout* brightnessHighLayout = new QHBoxLayout();
     QLabel* brightnessHighLabel = new QLabel("亮度-高", this);
     brightnessHighLabel->setFont(font);
@@ -302,10 +300,10 @@ void ColorDlg::initUI()
 
     mainLayout->addLayout(controlLayout);
 
-    // 添加弹性空间，使内容在垂直方向上自适应
+    // 添加弹簧，使控件群整体居顶
     mainLayout->addStretch();
 
-    // 连接信号槽
+    // 按钮→槽
     connect(colorTestButton, SIGNAL(clicked()), this, SLOT(onButtonColorTest()));
     connect(runTestButton, SIGNAL(clicked()), this, SLOT(onButtonRunTest()));
     connect(stopButton, SIGNAL(clicked()), this, SLOT(onButtonStopTest()));
@@ -313,8 +311,8 @@ void ColorDlg::initUI()
     connect(colorLoadButton, SIGNAL(clicked()), this, SLOT(onButtonLoad()));
     connect(segCheckBox, SIGNAL(stateChanged(int)), this, SLOT(onSegCheckBoxStateChanged(int)));
 
-    // 连接滚动条（六个滑块全接上）
-    // H 色相：允许 Low>High 跨越 0°（环形空间）
+    // 六个滑块的值变更响应：更新阈值、重绘色环并标记未保存
+    // H 色相：允许 Low>High 以覆盖跨越 0° 的环形区间
     connect(scrollBarHMin, &QScrollBar::valueChanged, this, [this](int) {
         m_H_Low = scrollBarHMin->value();
         UpdateHSIThreshold();
@@ -328,7 +326,7 @@ void ColorDlg::initUI()
         m_isSaved = false;
     });
 
-    // S 饱和度：Low > High 时弹回（MFC 行为）
+    // S 饱和度：Low>High 不合法，强制回退旧值（沿用 MFC 行为）
     connect(scrollBarSMin, &QScrollBar::valueChanged, this, [this](int val) {
         if (val > scrollBarSMax->value()) {
             scrollBarSMin->blockSignals(true);
@@ -356,7 +354,7 @@ void ColorDlg::initUI()
         m_isSaved = false;
     });
 
-    // I 亮度：Low > High 时弹回（MFC 行为）
+    // I 亮度：Low>High 不合法，强制回退旧值（沿用 MFC 行为）
     connect(scrollBarIMin, &QScrollBar::valueChanged, this, [this](int val) {
         if (val > scrollBarIMax->value()) {
             scrollBarIMin->blockSignals(true);
@@ -384,22 +382,21 @@ void ColorDlg::initUI()
         m_isSaved = false;
     });
 
-    // 连接放大/采样/清空按钮
+    // 放大/采样/清空按钮→槽
     connect(zoomButton, &QPushButton::clicked, this, &ColorDlg::onZoom);
     connect(sampleButton, &QPushButton::clicked, this, &ColorDlg::onSample);
     connect(clearButton, &QPushButton::clicked, this, &ColorDlg::onClearSamples);
 
-    // 不再连接 frameCaptured 信号，右侧预览框保持空白，
-    // 只在用户点击"放大"时填充框选内容。
+    // 不自动连接帧到达信号：预览框仅在用户点击"放大"后填充框选内容，
+    // 避免连续刷新与手动框选操作冲突。
 
-    // 初始化 yi[] 数组
+    // 亮度直方图计数清零
     memset(yi, 0, sizeof(yi));
 
     // 预设 5 个主要对象的默认 HSI 阈值
     // {H_low, H_high, S_low, S_high, I_low, I_high}  单位: H×10, S%, I(0~255)
-    // H 范围各不相同（对应色环上不同颜色区域），弧线跨度相同（800≈80°）
-    // S 范围统一 30-100（排除灰白），I 范围统一 85-170（亮度条 1/3 到 2/3）
-    // 所有弧线大小形状一致，仅位置不同
+    // 设计要点：各对象 H 区间对应色环不同色相区，但弧线跨度统一(≈80°)，
+    // S 统一排除灰白(30~100)、I 统一取中段(85~170)，保证弧线形状一致仅位置不同
     int defaults[5][6] = {
         {2000, 2800, 30, 100, 85, 170},   // 0 我方队色（蓝色，H≈200°-280°）
         {2700, 3300, 30, 100, 85, 170},   // 1 紫色（H≈270°-330°）
@@ -411,8 +408,8 @@ void ColorDlg::initUI()
         for (int j = 0; j < 6; ++j)
             HSIThreshold[i][j] = defaults[i][j];
 
-    // 启动时始终显示默认值，不自动加载 color.dat
-    // 用户点击"加载"按钮后才从文件覆盖
+    // 启动时使用内置默认阈值，不自动读 color.dat；
+    // 用户点击"加载"后才以文件内容覆盖
     loadThresholdForObject(0);
     m_isSaved = true;
 
@@ -421,9 +418,9 @@ void ColorDlg::initUI()
 
 void ColorDlg::onButtonColorTest()
 {
-    // 清除左侧显示区红框，保留右侧预览图像和框选矩形（方便二次框选）
+    // 单帧测试：清除左侧红框，保留右侧预览便于二次框选
     m_isColorTesting = true;
-    m_isRunTesting = false;  // 切换到单帧测试模式，停止动态测试标志
+    m_isRunTesting = false;  // 停止动态测试，进入单帧模式
     DisplayDlg* dispDlg = this->window()->findChild<DisplayDlg*>();
     if (dispDlg) {
         dispDlg->clearOverlaySelection();
@@ -436,7 +433,7 @@ void ColorDlg::onButtonColorTest()
 
 void ColorDlg::onButtonRunTest()
 {
-    // 清除左侧显示区红框，保留右侧预览图像和框选矩形（方便二次框选）
+    // 动态测试：清除左侧红框，保留右侧预览便于二次框选
     m_isRunTesting = true;
     DisplayDlg* dispDlg = this->window()->findChild<DisplayDlg*>();
     if (dispDlg) {
@@ -453,7 +450,7 @@ void ColorDlg::onButtonStopTest()
 {
     m_isColorTesting = false;
     m_isRunTesting = false;
-    // 先停止动态测试的定时器，再抓帧显示（对应 MFC ShowColorTest 中的 Stop()）
+    // 先停定时器再抓单帧，避免抓到测试中间态（对应 MFC ShowColorTest 的 Stop()）
     DisplayDlg* dispDlg = this->window()->findChild<DisplayDlg*>();
     if (dispDlg) {
         dispDlg->Stop();
@@ -508,10 +505,8 @@ void ColorDlg::onButtonLoad()
                 }
             }
 
-            // Reflect loaded values in the scroll-bar positions
-            // (update only the bars that are member variables)
-            // 同步当前对象的全部 6 个滑块并重绘色环
-            // 对应 MFC OnBnClickedColorLoad 中的 UpdateHSIThreshold() + OnPaint()
+            // 同步当前对象的全部 6 个滑块并重绘色环，
+            // 对应 MFC OnBnClickedColorLoad 的 UpdateHSIThreshold() + OnPaint()
             loadThresholdForObject(m_object);
             m_isSaved = true;
             Debug::get()->print(L"[Color] HSI thresholds loaded from color.dat.");
@@ -534,7 +529,7 @@ void ColorDlg::onSegCheckBoxStateChanged(int state)
 
 void ColorDlg::onScrollBarChanged()
 {
-    // 批量读取所有滑块值（用于信号阻塞后的同步）
+    // 批量回读滑块值，用于信号阻塞期间的统一同步
     m_H_Low  = scrollBarHMin->value();
     m_H_High = scrollBarHMax->value();
     m_S_Low  = scrollBarSMin->value();
@@ -571,7 +566,7 @@ void ColorDlg::loadThresholdForObject(int obj)
     m_I_Low  = HSIThreshold[obj][4];
     m_I_High = HSIThreshold[obj][5];
 
-    // 批量更新滑块，阻塞信号避免逐个触发 onScrollBarChanged
+    // 阻塞信号后批量设值，避免逐个 valueChanged 触发连锁重绘
     scrollBarHMin->blockSignals(true);
     scrollBarHMax->blockSignals(true);
     scrollBarSMin->blockSignals(true);
@@ -593,7 +588,6 @@ void ColorDlg::loadThresholdForObject(int obj)
     scrollBarIMin->blockSignals(false);
     scrollBarIMax->blockSignals(false);
 
-    // 更新 HSIThreshold 数组
     UpdateHSIThreshold();
     drawHSIRing();
     drawBrightnessHistogram();
@@ -603,20 +597,20 @@ void ColorDlg::updateDisplayImage(const QPixmap& pixmap)
 {
     if (!m_pDisplayLabel) return;
 
-    // 保存原始帧用于后续精确采样
+    // 保留原始帧，供采样时按原图坐标精确取色
     m_lastFrame = pixmap;
 
-    // 保持宽高比缩放图像以适应显示区域
+    // 保持宽高比缩放以适应显示区
     QPixmap scaled = pixmap.scaled(m_pDisplayLabel->size(), Qt::KeepAspectRatio, Qt::FastTransformation);
 
-    // 如果有采样点，绘制标记
+    // 叠加已有采样点标记
     if (!m_vecColorSet.isEmpty()) {
         QPixmap overlay(scaled);
         QPainter painter(&overlay);
         painter.setPen(QPen(Qt::red, 2));
         painter.setBrush(QBrush(Qt::red));
 
-        // 计算缩放和偏移
+        // 由原图坐标换算到缩放后显示坐标（含居中偏移）
         double scaleX = double(scaled.width()) / double(pixmap.width());
         double scaleY = double(scaled.height()) / double(pixmap.height());
         int offsetX = (m_pDisplayLabel->width() - scaled.width()) / 2;
@@ -635,7 +629,7 @@ void ColorDlg::updateDisplayImage(const QPixmap& pixmap)
     }
 }
 
-// 重绘预览，绘制采样点和当前选择矩形（如果存在）
+// 重绘预览：叠加点采样标记与当前框选矩形
 void ColorDlg::redrawPreview()
 {
     if (!m_pDisplayLabel) return;
@@ -644,7 +638,7 @@ void ColorDlg::redrawPreview()
     QRect   baseSrcRect;   // baseImage 对应的原始图像区域
 
     if (!m_zoomSourceRect.isEmpty()) {
-        // 放大模式：从 m_lastFrame 截取放大区域
+        // 放大模式：从原始帧截取放大区域作为底图
         if (m_lastFrame.isNull()) return;
         QImage fullImg = m_lastFrame.toImage().convertToFormat(QImage::Format_RGB888);
         QImage crop = fullImg.copy(m_zoomSourceRect);
@@ -659,7 +653,7 @@ void ColorDlg::redrawPreview()
         return;
     }
 
-    // 拉伸填充预览框（使用 size() 与 onZoom() 保持一致，避免图像位移）
+    // 拉伸填满预览框，与 onZoom 同用 IgnoreAspectRatio 以免图像位移
     QSize avail = m_pDisplayLabel->size();
     QPixmap pix = baseImage.scaled(avail, Qt::IgnoreAspectRatio, Qt::FastTransformation);
     QPainter painter(&pix);
@@ -668,10 +662,8 @@ void ColorDlg::redrawPreview()
     double pixW = double(pix.width());
     double pixH = double(pix.height());
 
-    // 采样点不在预览图上显示（仅在色环上标注）
-    // m_vecColorSet 仍保留数据，供 drawHSIRing 在色环上绘制
-
-    // 绘制点模式收集的坐标（用蓝色小叉标记）
+    // m_vecColorSet 仅用于色环标注，此处不绘制；
+    // 点模式收集的坐标以蓝色十字标记在预览图上
     painter.setPen(QPen(Qt::blue, 2));
     for (const QPoint& p : m_points) {
         double rx = double(p.x() - baseSrcRect.left()) / baseSrcRect.width();
@@ -682,12 +674,12 @@ void ColorDlg::redrawPreview()
         painter.drawLine(px, py - 4, px, py + 4);
     }
 
-    // 绘制框选矩形（鼠标释放后仍保留，与 MFC GDI XOR 行为一致）
+    // 绘制框选矩形：鼠标释放后仍保留（对齐 MFC GDI XOR 行为）
     if (!m_currentRect.isNull()) {
         painter.setPen(QPen(Qt::blue, 2, Qt::DashLine));
         painter.setBrush(Qt::NoBrush);
         QRect r = m_currentRect.normalized();
-        // clamp to pix
+        // 裁剪到画布范围
         r = r.intersected(QRect(0, 0, pix.width() - 1, pix.height() - 1));
         if (!r.isEmpty()) {
             painter.drawRect(r);
@@ -755,9 +747,8 @@ bool ColorDlg::eventFilter(QObject* watched, QEvent* event)
                     redrawPreview();
                 }
                 else {
-                    // 点模式：只收集坐标，不采样（由「采样」按钮处理）
-                    // 坐标映射与 onZoom() 的 IgnoreAspectRatio 拉伸一致：
-                    // 预览图强制拉伸填满 label，点击坐标直接按比例映射回原图
+                    // 点模式：仅记录点击坐标，采样交由「采样」按钮处理。
+                    // 坐标按预览图 IgnoreAspectRatio 拉伸比例逆映射回原图坐标
                     if (m_lastFrame.isNull()) return true;
                     int lw = m_pDisplayLabel->width();
                     int lh = m_pDisplayLabel->height();
@@ -784,7 +775,7 @@ bool ColorDlg::eventFilter(QObject* watched, QEvent* event)
             if (me->button() == Qt::LeftButton && m_selecting && m_SelectRect) {
                 QPoint pos = me->pos();
                 m_currentRect = QRect(m_selectStart, pos).normalized();
-                // m_currentRect 由「采样」按钮读取，不清空
+                // 框选结果留给「采样」按钮读取，此处不清空
                 m_selecting = false;
                 return true;
             }
@@ -837,13 +828,13 @@ void ColorDlg::sampleAtImagePoint(const QPoint& imgPt)
 
 void ColorDlg::onZoom()
 {
-    // 从左侧主显示区获取框选矩形和当前帧，截取并拉伸填充右侧预览框
+    // 取左侧显示区的框选矩形并截取当前帧，拉伸填充右侧预览框
     DisplayDlg* dispDlg = this->window()->findChild<DisplayDlg*>();
     if (!dispDlg) return;
 
     QRect selRect = dispDlg->GetRect().normalized();
 
-    // 未在显示区框选时弹窗提示
+    // 未框选时提示用户先操作
     if (selRect.isEmpty()) {
         QMessageBox::warning(this, "提示", "请先在显示区框选图像");
         return;
@@ -852,13 +843,13 @@ void ColorDlg::onZoom()
     unsigned char* pSrc = dispDlg->getDispSingle();
     if (!pSrc || !m_pDisplayLabel) return;
 
-    // 将 rect 限定在图像范围内
+    // 框选矩形裁剪到图像边界内
     QRect imgRect(0, 0, DISPLAY_W, DISPLAY_H);
     selRect = selRect.intersected(imgRect);
 
     if (selRect.isEmpty() || selRect.width() < 2 || selRect.height() < 2) return;
 
-    // 从原始帧截取矩形区域
+    // 逐行拷贝原始帧的框选区域到独立 QImage
     int sw = selRect.width();
     int sh = selRect.height();
     QImage cropped(sw, sh, QImage::Format_RGB888);
@@ -873,18 +864,16 @@ void ColorDlg::onZoom()
         m_pDisplayLabel->size(), Qt::IgnoreAspectRatio, Qt::FastTransformation);
     m_pDisplayLabel->setPixmap(result);
 
-    // 保存放大源矩形，用于右侧框选→原图坐标映射
+    // 记录放大源矩形，供右侧框选逆映射回原图坐标
     m_zoomSourceRect = selRect;
 
-    // 将全帧保存到 m_lastFrame，供后续采样映射使用
-    // 每次 onZoom 都重建，因为 m_pDispSingle 可能已被 ShowSingle 更新
+    // 每次放大都重建全帧副本，因为底层帧可能已被 ShowSingle 更新
     QImage fullImg(pSrc, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
     m_lastFrame = QPixmap::fromImage(fullImg);
 }
 
-// 判断像素是否匹配当前对象的 HSI 阈值
-// 与 DisplayDlg::FindPixel 使用完全一致的计算方式
-bool ColorDlg::isPixelMatchingThreshold(int R, int G, int B) 
+// 判断像素是否命中当前对象的 HSI 阈值，计算方式与 DisplayDlg::FindPixel 完全一致
+bool ColorDlg::isPixelMatchingThreshold(int R, int G, int B)
 {
     if (R + G + B == 0) return false;
 
@@ -899,7 +888,7 @@ bool ColorDlg::isPixelMatchingThreshold(int R, int G, int B)
     int iLow  = HSIThreshold[m_object][4];
     int iHigh = HSIThreshold[m_object][5];
 
-    // H 阈值检查（支持跨越 0°：hLow > hHigh 时用 OR）
+    // H 阈值支持跨 0°：当 hLow>hHigh 时取两段并集（OR）
     bool hOK;
     if (hHigh >= hLow)
         hOK = (H >= hLow && H <= hHigh);
@@ -911,7 +900,7 @@ bool ColorDlg::isPixelMatchingThreshold(int R, int G, int B)
 
 void ColorDlg::onSample()
 {
-    // 未在预览图像上框选时弹窗提示
+    // 未框选时提示用户先操作
     if (m_currentRect.isNull() || m_currentRect.width() <= 1 || m_currentRect.height() <= 1) {
         QMessageBox::warning(this, "提示", "请先在预览图像上框选采样区域");
         return;
@@ -921,10 +910,10 @@ void ColorDlg::onSample()
     QRect  sampleRect;
 
     if (!m_zoomSourceRect.isEmpty() && !m_lastFrame.isNull()) {
-        // 放大模式：从全帧截取放大区域后采样
+        // 放大模式：从全帧截取放大区域再采样
         img = m_lastFrame.toImage().convertToFormat(QImage::Format_RGB888);
         if (!m_currentRect.isNull() && m_currentRect.width() > 1 && m_currentRect.height() > 1) {
-            // 右侧已有框选，映射回原图
+            // 将预览框选区逆映射回原图放大区域
             int lw = m_pDisplayLabel ? m_pDisplayLabel->width() : 1;
             int lh = m_pDisplayLabel ? m_pDisplayLabel->height() : 1;
             QRect cr = m_currentRect.normalized();
@@ -939,16 +928,16 @@ void ColorDlg::onSample()
             sampleRect = QRect(QPoint(ix1, iy1), QPoint(ix2, iy2)).normalized();
         }
         else {
-            // 无框选则采样放大区域的中心 5×5
+            // 无框选时默认取放大区域中心 5×5
             sampleRect = QRect(m_zoomSourceRect.center().x() - 2,
                                m_zoomSourceRect.center().y() - 2, 5, 5);
         }
     }
     else if (!m_lastFrame.isNull()) {
-        // 非放大模式：从全帧采样
+        // 非放大模式：直接在全帧上采样
         img = m_lastFrame.toImage().convertToFormat(QImage::Format_RGB888);
         if (!m_currentRect.isNull() && m_currentRect.width() > 1 && m_currentRect.height() > 1) {
-            // 右侧已有框选，映射回全帧（IgnoreAspectRatio，与 onZoom 一致）
+            // 预览框选逆映射回全帧坐标（IgnoreAspectRatio，与 onZoom 一致）
             int lw = m_pDisplayLabel->width();
             int lh = m_pDisplayLabel->height();
             QRect cr = m_currentRect.normalized();
@@ -966,12 +955,12 @@ void ColorDlg::onSample()
         return;
     }
 
-    // ── 逐像素采样（与 MFC ColorAnalyse 一致：无阈值过滤，记录区域内所有像素） ──
-    // MFC DisplayDlg.cpp:730 无条件记录所有像素，目的是让用户看到颜色分布后手动调滑块
+    // ── 逐像素采样：区域内全部记录，不做阈值过滤（与 MFC ColorAnalyse 一致）──
+    // 目的是让用户在色环上看到颜色分布后手动调滑块
     QRect r = sampleRect.intersected(img.rect());
     if (r.isEmpty()) return;
 
-    // 清空旧采样数据
+    // 清空旧采样数据，准备新一轮统计
     m_vecColorSet.clear();
     memset(yi, 0, sizeof(yi));
 
@@ -981,11 +970,11 @@ void ColorDlg::onSample()
         for (int x = r.left(); x <= r.right(); ++x) {
             QRgb rgb = img.pixel(x, y);
             int R = qRed(rgb), G = qGreen(rgb), B = qBlue(rgb);
-            if (R + G + B == 0) continue;  // 跳过纯黑像素
+            if (R + G + B == 0) continue;  // 跳过纯黑像素（无色相意义）
 
             int Ival = (R + G + B) / 3;
 
-            // 无条件记录（对应 MFC: m_vecColorSet.push_back(色环坐标))
+            // 无条件记录像素坐标，供色环标注
             m_vecColorSet.append(QPoint(x, y));
             if (Ival >= 0 && Ival < 255) yi[Ival]++;
             count++;
@@ -996,35 +985,31 @@ void ColorDlg::onSample()
 
     Debug::get()->print(QString("[Color] Sampled %1 pixels").arg(count).toStdWString().c_str());
 
-    // 注意：不自动调滑块，与 MFC OnNewsample 行为一致
-    // 采样只记录点和直方图，用户根据色环分布手动调整阈值
+    // 仅记录采样结果，不自动改滑块（与 MFC OnNewsample 一致），
+    // 由用户依据色环分布手动调整阈值
 
-    // 确保 HSIThreshold 数组与当前滑块值同步（只写数组，不改滑块）
+    // 将当前滑块值写回数组（只写数组不改滑块），再刷新各视图
     UpdateHSIThreshold();
 
-    // 重绘色环（在 HSI 空间标注所有像素的位置）
     drawHSIRing();
-    // 刷新亮度直方图（只显示匹配像素的 I 分布）
     drawBrightnessHistogram();
-    // 刷新预览框（显示匹配点在预览图上的位置）
     redrawPreview();
 }
 
 void ColorDlg::onClearSamples()
 {
-    // 清空数据
+    // 清空采样数据与点记录
     m_vecColorSet.clear();
     m_points.clear();
     memset(yi, 0, sizeof(yi));
 
-    // 清除预览框上的框选矩形，保留放大图像
+    // 仅清框选矩形，保留放大图
     m_currentRect = QRect();
     redrawPreview();
 
-    // 重绘色环（m_vecColorSet 已空，黑点消失）
+    // 采样数据已空，重绘后色环黑点与直方图蓝柱随之消失
     drawHSIRing();
 
-    // 重绘亮度直方图（yi[] 已清零，蓝柱消失）
     drawBrightnessHistogram();
 }
 
@@ -1035,7 +1020,7 @@ void ColorDlg::drawHSIRing()
 {
     if (!HSIdisplayLabel) return;
 
-    // 尝试加载色环位图
+    // 加载 MFC 同款色环位图作为基底
     QPixmap ringBase(":/QtWidgetDesign/resources/HSICir.bmp");
     if (ringBase.isNull()) {
         drawHSIRingFallback();
@@ -1045,7 +1030,7 @@ void ColorDlg::drawHSIRing()
     QSize labelSize = HSIdisplayLabel->size();
     if (labelSize.isEmpty()) return;
 
-    // 将位图缩放后居中放置到画布上
+    // 位图按比例缩放后居中绘制到画布
     QPixmap pix = ringBase.scaled(labelSize, Qt::KeepAspectRatio, Qt::FastTransformation);
     QPixmap canvas(labelSize);
     canvas.fill(Qt::white);
@@ -1097,7 +1082,7 @@ void ColorDlg::drawHSIRing()
         if (span < 0) span += 360.0;
         if (span < 1.0) return;
 
-        // 手动生成弧线点集（cos/sin，+sin=CW，与色环一致）
+        // 手动生成弧线点集：+sin 对应色环顺时针布局
         const int N = qMax(int(span / 2.0), 8);  // 每 2° 一段，最少 8 段
         QPolygonF innerPts, outerPts;
         for (int i = 0; i <= N; ++i) {
@@ -1111,21 +1096,21 @@ void ColorDlg::drawHSIRing()
         painter.setPen(QPen(penColor, 1));
         painter.setBrush(Qt::NoBrush);
 
-        // 内弧 + 外弧（polyline 逼近）
+        // 用 polyline 逼近内外弧
         painter.drawPolyline(innerPts);
         painter.drawPolyline(outerPts);
 
-        // 径向封闭线段（与弧线端点精确对齐）
+        // 径向线段闭合扇形，与弧线端点对齐
         painter.drawLine(innerPts.first(), outerPts.first());
         painter.drawLine(innerPts.last(),  outerPts.last());
     };
 
-    // 先画所有对象灰色弧线（跳过 S 全为零的未使用对象）
+    // 先画所有对象灰色弧线，跳过 S 全为零的未使用对象
     for (int i = 0; i < 8; ++i) {
         if (HSIThreshold[i][2] == 0 && HSIThreshold[i][3] == 0) continue;
         drawArcLines(i, QColor(180, 175, 170));  // 灰色
     }
-    // 再画当前对象黑色弧线（MFC UpdateSelect1）
+    // 再用黑色叠加当前对象弧线（对应 MFC UpdateSelect1）
     if (m_object >= 0 && m_object < 8)
         drawArcLines(m_object, Qt::black);
 
@@ -1148,7 +1133,7 @@ void ColorDlg::drawHSIRing()
             double aRad = hDeg * M_PI / 180.0;
             double d = innerR + sNorm * (outerR - innerR);
             double mx = center.x() + d * cos(aRad);
-            double my = center.y() + d * sin(aRad);  // +sin: 色环 CW 布局
+            double my = center.y() + d * sin(aRad);  // +sin 匹配色环顺时针布局
             painter.setPen(Qt::NoPen);
             painter.setBrush(Qt::black);
             painter.drawEllipse(QPointF(mx, my), 2.5, 2.5);
@@ -1179,7 +1164,7 @@ void ColorDlg::drawHSIRingFallback()
     for (int angle = 0; angle < 360; angle += 2) {
         double rad = angle * M_PI / 180.0;
         int x1 = cx + int(outerR * cos(rad));
-        int y1 = cy - int(outerR * sin(rad));  // -sin: y 轴向上
+        int y1 = cy - int(outerR * sin(rad));  // -sin 使 y 轴向上，构成标准色环
         int x2 = cx + int(innerR * cos(rad));
         int y2 = cy - int(innerR * sin(rad));
         QColor c; c.setHsv(angle, 255, 255);
@@ -1189,7 +1174,7 @@ void ColorDlg::drawHSIRingFallback()
     painter.end();
     HSIdisplayLabel->setPixmap(pixmap);
 
-    // 回退路径中也画采样点（使用 HLUT 公式，-sin 匹配色环 CCW 布局）
+    // 回退路径同样标注采样点，用 HLUT 公式且 -sin 以匹配标准色环布局
     if (!m_vecColorSet.isEmpty() && !m_lastFrame.isNull()) {
         QPixmap curPix = HSIdisplayLabel->pixmap();
         QPixmap overlay = curPix.isNull()
@@ -1212,7 +1197,7 @@ void ColorDlg::drawHSIRingFallback()
                 double aRad2 = hDeg * M_PI / 180.0;
                 double d2 = innerR + sNorm * (outerR - innerR);
                 double mx2 = cx + d2 * cos(aRad2);
-                double my2 = cy - d2 * sin(aRad2);  // -sin: y 轴向上
+                double my2 = cy - d2 * sin(aRad2);  // -sin 使 y 轴向上
                 p2.setPen(Qt::NoPen);
                 p2.setBrush(Qt::black);
                 p2.drawEllipse(QPointF(mx2, my2), 2.5, 2.5);
@@ -1235,23 +1220,23 @@ void ColorDlg::drawBrightnessHistogram()
     pix.fill(QColor(240, 240, 240));
     QPainter painter(&pix);
 
-    // 找 yi[] 最大值用于归一化
+    // 找 yi[] 峰值用于柱高归一化
     int maxVal = 1;
     for (int i = 0; i < 255; i++)
         if (yi[i] > maxVal) maxVal = yi[i];
 
-    double barW = (double)(w - 4) / 255.0;       // 左右留 2px 边距
+    double barW = (double)(w - 4) / 255.0;       // 左右各留 2px 边距
     int plotH   = h - 6;                          // 上下留边
 
     for (int i = 0; i < 255; i++) {
         int barH = int((double)yi[i] / maxVal * plotH);
         if (barH <= 0) continue;
-        QColor c(0, 0, 255);  // 统一蓝色，与 MFC DrawPoint 的 RGB(0,0,255) 一致
+        QColor c(0, 0, 255);  // 蓝色柱，与 MFC DrawPoint 的 RGB(0,0,255) 一致
         painter.fillRect(QRectF(2 + i * barW, h - 3 - barH,
                                  qMax(1.0, barW), (double)barH), c);
     }
 
-    // 绘制 I 低/高阈值红线
+    // 标注 I 低/高阈值红线
     if (w > 4) {
         double lowX = 2 + (m_I_Low / 255.0) * (w - 4);
         double highX= 2 + (m_I_High/ 255.0) * (w - 4);

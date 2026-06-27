@@ -2,19 +2,14 @@
 
 /*
 * Debug.cpp - 调试信息输出类实现
-* 
-* 功能：
-* 1. 实现调试信息的打印功能
-* 2. 提供清理调试信息的方法
-* 3. 支持宽字符和QString格式的调试信息
-* 4.已完成
+* 单例模式，将日志统一输出到绑定的 QTextEdit，避免散落各处的 printf
 */
 
-//调试信息输出
+// 调试信息输出类：通过单例统一管理日志，避免到处直接访问UI控件
 Debug* Debug::_pDebug = nullptr;
 
 /**
-* @brief Debug类构造函数
+* @brief 构造函数：输出目标初始化为空，必须先调用 init 绑定文本框后才能输出
 */
 Debug::Debug()
     : m_edit(nullptr)
@@ -22,8 +17,7 @@ Debug::Debug()
 }
 
 /**
-* @brief 获取Debug类的单例实例
-* @return Debug* - Debug实例指针
+* @brief 懒汉单例：首次访问时创建实例，全局唯一
 */
 Debug* Debug::get()
 {
@@ -35,8 +29,7 @@ Debug* Debug::get()
 }
 
 /**
-* @brief 初始化Debug类，设置输出文本编辑框
-* @param edit - 用于显示调试信息的QTextEdit指针
+* @brief 绑定日志输出的文本框，需在调用 print/clean 之前完成
 */
 void Debug::init(QTextEdit *edit)
 {
@@ -44,8 +37,7 @@ void Debug::init(QTextEdit *edit)
 }
 
 /**
-* @brief 打印宽字符格式的调试信息
-* @param str - 宽字符格式的调试信息
+* @brief 打印宽字符调试信息，逐条追加换行保持可读性
 */
 void Debug::print(const wchar_t* str)
 {
@@ -57,8 +49,7 @@ void Debug::print(const wchar_t* str)
 }
 
 /**
-* @brief 打印QString格式的调试信息
-* @param str - QString格式的调试信息
+* @brief 打印QString调试信息，与宽字符版本行为一致
 */
 void Debug::print(const QString& str)
 {
@@ -70,7 +61,7 @@ void Debug::print(const QString& str)
 }
 
 /**
-* @brief 清理调试信息
+* @brief 清空日志显示，便于重新开始观察输出
 */
 void Debug::clean()
 {

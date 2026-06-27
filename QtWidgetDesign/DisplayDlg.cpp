@@ -11,8 +11,7 @@
 #include <algorithm>
 
 // ═══════════════════════════════════════════════════════════════
-// Qt ColorDlg 对象编号到 MFC 语义的映射
-// 不改 UI 显示文字，只在内部识别时使用
+// ColorDlg 对象编号到内部语义的映射：UI 文字保持不变，仅用于识别逻辑区分颜色对象
 // ═══════════════════════════════════════════════════════════════
 static const int QT_TEAM  = 0;  // 我方队色
 static const int QT_MEMB1 = 1;  // 紫色
@@ -20,7 +19,7 @@ static const int QT_MEMB2 = 2;  // 绿色
 static const int QT_BALL  = 3;  // 球色
 static const int QT_OPP   = 4;  // 敌方队色
 
-// 自定义MIN函数，计算三个值中的最小值
+// RGB 三通道最小值，用于 HSI 饱和度计算
 inline int MIN(int a, int b, int c, int n)
 {
     int min_val = a;
@@ -29,47 +28,31 @@ inline int MIN(int a, int b, int c, int n)
     return min_val;
 }
 
-// RGB -> H 转换表
+// RGB->H 查找表：H 通过查表加速，S/I 用公式实时计算
 int HLUT[256][256][256];    //RGB-H 转换表，S,I值分别用公式计算
 
-// 预分配缓冲区，避免频繁内存分配
+// 帧抓取预分配缓冲区，避免每帧 malloc/free 抖动
 static unsigned char* pBuffer = nullptr;
 
-// 机器人形状坐标
+// 机器人外形 12 个关键点相对中心的偏移坐标，按朝向 0~360 度索引
 int robot_xy[361][12][2];             //机器人方向图像关键点坐标
 
 // ========================================================================
-// OverlayWidget 实现 - 透明覆盖层控件
-// ========================================================================
-// 设计说明：
-//   此控件叠在 displayLabel（摄像头画面）上方，用于采色模式下
-//   绘制鼠标框选的红框矩形。采用透明背景 + XOR 组合模式，
-//   实现与 MFC 的 CDC::SetROP2(R2_NOTXORPEN) 等价的视觉效果。
-//
-//   与 MFC 的对应关系：
-//     MFC: CDisplayDlg::OnLButtonDown / OnMouseMove 中
-//          pDC = m_display.GetDC(); pDC->SetROP2(R2_NOTXORPEN);
-//     Qt:  OverlayWidget::mousePressEvent / mouseMoveEvent 中
-//          QPainter + RasterOp_SourceXorDestination
+// OverlayWidget - 透明覆盖层控件
+// 叠在 displayLabel 上方，用于采色模式下绘制鼠标框选矩形。
+// 用透明背景实现"只在框选时可见"的效果，对应 MFC 的 CDC 绘制层。
 // ========================================================================
 
-// 构造函数 - 初始化覆盖层控件
-// 参数 parent: 父控件（DisplayDlg），覆盖层将叠在 displayLabel 上方
+// 构造函数：透明背景 + 接收鼠标事件，使覆盖层可框选但不遮挡底层画面
 OverlayWidget::OverlayWidget(QWidget* parent)
     : QWidget(parent)
     , m_hasSelection(false)
 {
-    // 设置透明背景，使覆盖层不会遮挡底层的摄像头画面
     setStyleSheet("background: transparent;");
-    // 确保覆盖层可以接收鼠标事件（默认 true，显式设置以防万一）
     setAttribute(Qt::WA_TransparentForMouseEvents, false);
-    // 启用鼠标追踪，mouseMoveEvent 在按下状态下才会触发
-    // （实际拖拽时由 mousePressEvent 中的按钮状态控制）
 }
 
-// 设置框选矩形并触发重绘
-// 参数 r: 矩形区域（覆盖层控件坐标系，与 displayLabel 的图像坐标对齐）
-// 说明：外部调用此方法可以直接设置矩形，当前由 mousePressEvent/mouseMoveEvent 内部使用
+// 设置框选矩形并请求重绘（覆盖层坐标系与图像坐标对齐）
 void OverlayWidget::setSelectionRect(const QRect& r)
 {
     m_selectionRect = r;
@@ -77,8 +60,7 @@ void OverlayWidget::setSelectionRect(const QRect& r)
     update();  // 触发 paintEvent 重绘
 }
 
-// 清除框选矩形并触发重绘
-// 调用时机：切换标签页或重新开始框选时
+// 清除框选矩形并请求重绘（切换标签页或重新框选时调用）
 void OverlayWidget::clearSelectionRect()
 {
     m_hasSelection = false;
@@ -86,72 +68,44 @@ void OverlayWidget::clearSelectionRect()
     update();  // 触发 paintEvent 重绘（paintEvent 中 hasSelection=false 会跳过绘制）
 }
 
-// 重绘事件 - 用 XOR 模式绘制红色矩形线框
-// 触发时机：每次调用 update() 或窗口系统要求重绘时自动调用
-// 绘制原理：
-//   使用 RasterOp_SourceXorDestination 组合模式，红色线条与背景像素
-//   进行异或运算，产生高对比度的可见框线（类似 MFC 的 R2_NOTXORPEN）。
-//   由于覆盖层背景是透明的，XOR 操作直接作用在底层摄像头画面的像素上，
-//   视觉效果与 MFC 完全一致。
+// 绘制框选矩形：深红线框，颜色固定不随背景变化，保证任意背景下都清晰可见
 void OverlayWidget::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
 
-    // 没有有效框选时不需要绘制
     if (!m_hasSelection)
         return;
 
     QPainter painter(this);
-    // 使用 SourceOver 模式直接绘制深红色线框，颜色不随背景变化
     painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
     painter.setPen(QPen(QColor(200, 0, 0), 3));
     painter.setBrush(Qt::NoBrush);
     painter.drawRect(m_selectionRect);
 }
 
-// 鼠标按下事件 - 记录框选起点
-// 触发时机：用户在覆盖层上按下鼠标左键
-// 对应 MFC：CDisplayDlg::OnLButtonDown 中 COLOR_SET 分支
-//   m_Rect.left = pt.x; m_Rect.top = pt.y;
+// 鼠标按下：记录框选起点，初始化 1x1 矩形
 void OverlayWidget::mousePressEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton) {
-        // 记录框选起点，初始化一个 1×1 的矩形
-        // 与 MFC 的 m_Rect.right = pt.x + 1; m_Rect.bottom = pt.y + 1 一致
         m_selectionRect = QRect(event->pos(), QSize(1, 1));
         m_hasSelection = true;
         update();  // 触发 paintEvent，画出初始的 1×1 矩形（实际不可见）
     }
 }
 
-// 鼠标拖动事件 - 更新矩形终点并重绘
-// 触发时机：用户按住左键拖动鼠标时
-// 对应 MFC：CDisplayDlg::OnMouseMove 中 COLOR_SET 分支
-//
-// MFC 的做法（两步）：
-//   1. pDC->SetROP2(R2_NOTXORPEN);
-//      画旧矩形 → XOR 擦除（与背景异或还原）
-//   2. 更新 m_Rect.right/bottom
-//      画新矩形 → XOR 显示
-//
-// Qt 的做法（一步）：
-//   直接更新 m_selectionRect 的终点，然后调用 update()。
-//   paintEvent 每次从干净的覆盖层状态重画一个 XOR 矩形，
-//   不需要手动"擦旧"，视觉效果等同于 MFC 的两步操作。
-//   这是因为 Qt 的 update() 会先清除 widget 内容再调用 paintEvent，
-//   而 MFC 的 GDI 绘制是持久的，需要手动 XOR 擦除。
+// 鼠标拖动：更新矩形终点并重绘。
+// 与 MFC 需 XOR 擦旧矩形不同，Qt 每帧从干净状态重画，无需手动擦除。
 void OverlayWidget::mouseMoveEvent(QMouseEvent* event)
 {
     if (event->buttons() & Qt::LeftButton) {
-        // 更新矩形终点（normalized 确保 left<right, top<bottom，
-        // 即使用户从右下往左上拖也能正确显示）
+        // normalized 处理反向拖拽，保证矩形坐标始终 left<=right, top<=bottom
         m_selectionRect.setBottomRight(event->pos());
         m_selectionRect = m_selectionRect.normalized();
         update();  // 触发 paintEvent 重绘
     }
 }
 
-//功能：初始化显示区域，设置图像数据、机器人形状坐标和颜色转换表
+// 初始化显示区域：预建图像缓冲、机器人外形坐标表和 RGB-H 查找表
 
 DisplayDlg::DisplayDlg(QWidget* parent)
     : QWidget(parent)
@@ -171,12 +125,12 @@ DisplayDlg::DisplayDlg(QWidget* parent)
     , m_Length(7.5)
     , m_overlayWidget(nullptr)
 {
-    // 初始化图像数据
+    // 双缓冲：DispBitmap 用于动态显示，DispSingle 用于单帧抓取；Identify 默认指向动态帧
     m_pDispBitmap = new unsigned char[m_ImageSize.width() * m_ImageSize.height() * 3]();
     m_pDispSingle = new unsigned char[m_ImageSize.width() * m_ImageSize.height() * 3]();
     m_pIdentify = m_pDispBitmap;
 
-    // 初始化机器人形状坐标
+    // 预计算机器人外形 12 关键点：4 角顶点 + 中点 + 朝向指示点，按 0~360 度索引
     double ttheta, side = 7.5 * 1.25;
     for (int i = 0; i <= 360; i++)
     {
@@ -209,7 +163,7 @@ DisplayDlg::DisplayDlg(QWidget* parent)
         robot_xy[i][11][1] = (robot_xy[i][4][1] + robot_xy[i][7][1]) / 2;
     }
 
-    // 初始化RGB-H转换表，从文件加载
+    // 加载预生成的 RGB-H 查找表，文件缺失时回退为全 0（H 恒为 0）
     QFile file("resources/HLUT.dat");
     if (file.open(QIODevice::ReadOnly))
     {
@@ -222,7 +176,6 @@ DisplayDlg::DisplayDlg(QWidget* parent)
     }
     else
     {
-        // 如果文件加载失败，初始化为0
         for (int r = 0; r < 256; r++)
         {
             for (int g = 0; g < 256; g++)
@@ -235,7 +188,7 @@ DisplayDlg::DisplayDlg(QWidget* parent)
         }
     }
 
-    // 初始化机器人信息
+    // 机器人/球信息归零，并备份副本用于滤波防抖
     for (int i = 0; i < MAX_ROBOT_NUM; i++)
     {
         robotInfor[i].x = 0.0;
@@ -253,13 +206,13 @@ DisplayDlg::DisplayDlg(QWidget* parent)
     ballInfor.found = false;
     ballBk = ballInfor;
 
-    // 预加载车号图像，避免切换标签页时从磁盘加载延迟
+    // 启动时预加载车号图，避免标签页切换时磁盘 IO 卡顿
     m_carNumPixmap = QPixmap("resources/carnum.bmp");
 
     initUI();
 }
 
-// 功能：释放图像数据和定时器资源
+// 释放图像缓冲、定时器和共享抓取缓冲区
 
 DisplayDlg::~DisplayDlg()
 {
@@ -271,32 +224,29 @@ DisplayDlg::~DisplayDlg()
         delete m_grabTimer;
     if (fpsTimer)
         delete fpsTimer;
-    // 释放预分配的缓冲区
+    // 释放共享抓取缓冲区
     if (pBuffer)
         delete[] pBuffer;
 }
 
-// 功能：创建显示区域、帧率标签和定时器
+// 构建界面：fpsLabel + displayLabel + 采色覆盖层，并启动帧率定时器
 
 void DisplayDlg::initUI()
 {
-    // 设置字体
     QFont font("楷体", 12, QFont::Bold);
     setFont(font);
 
-    // 创建主布局
     mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    // 帧率显示标签 - 在显示区域上方，与右侧标签栏高度一致
+    // fpsLabel 高度与标签栏一致，保证显示区域上下对齐
     fpsLabel = new QLabel(this);
     fpsLabel->setStyleSheet("QLabel { background-color: transparent; color: black; font-size: 12px; padding: 2px; font-weight: bold; }");
     fpsLabel->setText("FPS: 0");
     fpsLabel->setFixedSize(DISPLAY_W, 32); // 与QTabWidget标签栏高度一致
     fpsLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
-    // 显示区域
     displayLabel = new QLabel(this);
     displayLabel->setStyleSheet("QLabel { background-color: #333333; border: 1px solid black; color: white; }");
     displayLabel->setFixedSize(DISPLAY_W, DISPLAY_H);
@@ -306,40 +256,28 @@ void DisplayDlg::initUI()
     mainLayout->addWidget(fpsLabel);
     mainLayout->addWidget(displayLabel);
 
-    // ── 创建采色模式的透明覆盖层 ─────────────────────────────────────────
-    // 覆盖层作为 displayLabel 的子控件，与 displayLabel 完全重叠。
-    // 坐标系说明：
-    //   displayLabel 的坐标范围为 (0,0) ~ (DISPLAY_W-1, DISPLAY_H-1)
-    //   由于 overlay 是 displayLabel 的子控件，overlay 的本地坐标
-    //   直接对应 displayLabel 中的图像坐标，无需额外的坐标转换。
-    //   这与 MFC 中 m_display.ScreenToClient(&pt) 的效果一致。
-    //
-    // 对应 MFC 代码：
-    //   CDisplayDlg::OnLButtonDown / OnMouseMove 中
-    //   pDC = m_display.GetDC() → 直接在 m_display 上画红框
+    // 采色覆盖层：作为 displayLabel 子控件完全重叠，本地坐标即图像坐标，无需转换
     m_overlayWidget = new OverlayWidget(displayLabel);
     m_overlayWidget->setFixedSize(DISPLAY_W, DISPLAY_H);
     m_overlayWidget->move(0, 0);  // 与 displayLabel 左上角对齐
     m_overlayWidget->hide();       // 初始隐藏，仅在 COLOR_SET 模式下显示
 
-    // 初始化定时器
+    // 抓帧定时器驱动 onTimer；帧率定时器每 500ms 刷新 FPS 显示
     m_grabTimer = new QTimer(this);
     connect(m_grabTimer, &QTimer::timeout, this, &DisplayDlg::onTimer);
 
-    // 初始化帧率更新定时器
     fpsTimer = new QTimer(this);
     connect(fpsTimer, &QTimer::timeout, this, &DisplayDlg::updateFPS);
     fpsTimer->start(500); // 每500ms更新一次，与MFC版本保持一致
 
-    // Load field image
+    // 场地背景图，加载失败时回退纯绿色
     m_groundImage.load("resources/ground.bmp");
     if (m_groundImage.isNull()) {
         m_groundImage = QImage(DISPLAY_W, DISPLAY_H, QImage::Format_RGB32);
         m_groundImage.fill(QColor(0, 128, 0));
     }
 
-    // Show a grey placeholder so the display area is never blank on startup.
-    // Once the camera opens (ShowDynamic / ShowSingle) this will be replaced.
+    // 启动占位图，避免摄像头未开启时显示空白
     QPixmap placeholder(DISPLAY_W, DISPLAY_H);
     placeholder.fill(QColor(80, 80, 80));
     QPainter ph(&placeholder);
@@ -349,12 +287,11 @@ void DisplayDlg::initUI()
     displayLabel->setPixmap(placeholder);
 }
 
-// Grab one frame, display it, and overlay any calibration point markers.
+// 抓取单帧并显示，叠加标定点十字标记
 void DisplayDlg::ShowSingle()
 {
     Camera* pCamera = Camera::GetInstance();
 
-    // 1. 确保摄像头已打开且在抓取 (来自 ui3 的健壮性保障)
     if (!pCamera->IsOpen()) {
         pCamera->Open();
     }
@@ -362,14 +299,12 @@ void DisplayDlg::ShowSingle()
         pCamera->StartGrabbing();
     }
 
-    // 2. 直接从流中抓取当前帧
     if (pCamera->RetrieveResult(m_pDispSingle)) {
 
-        // 3. 构建初始的显示图像
         QImage image(m_pDispSingle, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
         QPixmap pixmap = QPixmap::fromImage(image);
 
-        // 4. 叠加标定点红十字和标签 (来自 HEAD 的标定渲染逻辑)
+        // 标定点以红色十字 + 序号渲染，供 BORDER_SET 标定查看
         if (!m_calibPoints.empty()) {
             QPainter p(&pixmap);
             p.setPen(QPen(Qt::red, 2));
@@ -379,50 +314,41 @@ void DisplayDlg::ShowSingle()
 
             for (int i = 0; i < (int)m_calibPoints.size(); ++i) {
                 const QPoint& pt = m_calibPoints[i];
-                // Cross arms ±6 px
                 p.drawLine(pt.x() - 6, pt.y(), pt.x() + 6, pt.y());
                 p.drawLine(pt.x(), pt.y() - 6, pt.x(), pt.y() + 6);
-                // Index label (1-based)
                 p.drawText(pt.x() + 4, pt.y() - 4, QString::number(i + 1));
             }
         }
 
-        // 5. 将最终带有标定信息的图像渲染到界面上
         displayLabel->setPixmap(pixmap);
     }
 }
-//功能：启动定时器，持续从摄像头获取图像并显示
+
+// 启动定时抓帧并实时显示画面
 
 void DisplayDlg::ShowDynamic()
 {
-    // 确保停止之前的状态
     Stop();
 
-    // 确保摄像头已打开
     Camera* pCamera = Camera::GetInstance();
     if (!pCamera->IsOpen()) {
         if (!pCamera->Open()) {
-            // 如果摄像头打开失败，显示错误信息
             displayLabel->setText("无法打开摄像头");
             return;
         }
     }
 
-    // 确保摄像头处于抓取状态
     if (!pCamera->IsGrabbing()) {
         pCamera->StartGrabbing();
     }
 
-    // 设置状态为显示模式
     m_status = STATUS::Display;
 
-    // 开始计时
     m_DisplayWatch.start();
 
-    // 启动抓取线程
     m_grabTimer->start(50); // 与MFC版本保持一致
 
-    // 立即获取并显示一帧图像，避免切换时出现黑屏或显示旧图像
+    // 立即抓一帧填充显示，避免切换时短暂黑屏
     unsigned char* tempBuffer = new unsigned char[DISPLAY_W * DISPLAY_H * 3];
     if (pCamera->RetrieveResult(tempBuffer)) {
         pCamera->ConvertBitmap(m_pDispBitmap, tempBuffer, DISPLAY_W, DISPLAY_H);
@@ -433,27 +359,22 @@ void DisplayDlg::ShowDynamic()
     delete[] tempBuffer;
 }
 
-/**
- * @brief 显示车号
- * 功能：加载并显示车号图像
- */
+// 显示车号图，加载失败时回退文字提示
 void DisplayDlg::ShowCarNum()
 {
     Camera* pCamera = Camera::GetInstance();
     if (pCamera->IsGrabbing()) {
         this->Stop();
     }
-    // 使用预加载的车号图像，避免从磁盘加载延迟
     if (!m_carNumPixmap.isNull()) {
         displayLabel->setPixmap(m_carNumPixmap);
     }
     else {
-        // 如果图像加载失败，显示默认文本
         displayLabel->setText("车号显示");
     }
 }
 
-// 功能：根据颜色阈值显示符合条件的图像区域
+// 颜色阈值预览：保留符合阈值的像素，其余置白，用于采色调试
 
 void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
 {
@@ -473,7 +394,7 @@ void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
     {
         for (j = 0; j < DISPLAY_H; j++)
             for (i = 0; i < DISPLAY_W; i++) {
-                // RGB 格式: byte 0=R, 1=G, 2=B（与 Pylon RGB8packed 一致）
+                // 像素字节序为 R,G,B（Pylon RGB8packed）；H 域用 &&（非跨 0）
                 R = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 0);
                 G = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1);
                 B = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2);
@@ -498,7 +419,7 @@ void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
     {
         for (j = 0; j < DISPLAY_H; j++)
             for (i = 0; i < DISPLAY_W; i++) {
-                // RGB 格式: byte 0=R, 1=G, 2=B（与 Pylon RGB8packed 一致）
+                // H 跨越 0° 时用 || 判断，S/I 仍用 &&
                 R = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 0);
                 G = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 1);
                 B = *(pOrigin + (i + (DISPLAY_H - 1 - j) * DISPLAY_W) * 3 + 2);
@@ -526,14 +447,12 @@ void DisplayDlg::ShowColorTest(int(*HSI)[6], int object)
     delete[] m_pTestBitmap;
 }
 
-// 功能：启动测试模式，定时获取并处理图像
+// 启动测试模式：复位识别状态，首帧同步识别并建立滤波基线，随后定时刷新
 
 void DisplayDlg::ShowRunTest(bool ImageSeg)
 {
-    // 确保停止之前的状态
     Stop();
 
-    // 确保摄像头已打开并抓取
     Camera* pCamera = Camera::GetInstance();
     if (!pCamera->IsOpen()) {
         if (!pCamera->Open()) {
@@ -545,7 +464,6 @@ void DisplayDlg::ShowRunTest(bool ImageSeg)
         pCamera->StartGrabbing();
     }
 
-    // 清空历史数据
     for (int i = 0; i < MAX_ROBOT_NUM; i++) {
         robotInfor[i].x = 0.0;    robotInfor[i].y = 0.0;    robotInfor[i].theta = 0.0;
         robotBk[i]    = robotInfor[i];
@@ -563,9 +481,7 @@ void DisplayDlg::ShowRunTest(bool ImageSeg)
 
     m_DisplayWatch.start();
 
-    // 同步抓一帧并处理，避免 paintEvent 在首帧到达前用 (0,0) 旧数据绘制
-    // 对应 MFC: 抓帧线程直接在 StartTest() 中绘制，无时序间隔
-    // Stop() 会停止摄像头抓取，需先恢复
+    // 同步抓首帧并识别，避免 paintEvent 在首帧到达前用 (0,0) 旧数据绘制
     if (!pCamera->IsOpen()) pCamera->Open();
     if (!pCamera->IsGrabbing()) pCamera->StartGrabbing();
     {
@@ -575,9 +491,7 @@ void DisplayDlg::ShowRunTest(bool ImageSeg)
             m_pIdentify = m_pDispBitmap;
             IdentifyAll();
 
-            // 保存首帧识别结果作为滤波基线
-            // 避免第一个定时器帧误检时冲掉正确位置
-            // 对应 MFC: StartTest() 中 robotBk[i] = robotInfor[i]; ballBk = ballInfor;
+            // 首帧识别结果存入备份，作为后续滤波的基线，防止定时器首帧误检冲掉正确位置
             for (int k = 0; k < MAX_ROBOT_NUM; k++) {
                 robotBk[k] = robotInfor[k];
                 OpprobotBk[k] = OpprobotInfor[k];
@@ -590,7 +504,7 @@ void DisplayDlg::ShowRunTest(bool ImageSeg)
     m_grabTimer->start(33);
 }
 
-//功能：设置准备状态，初始化游戏并识别所有目标
+// 进入预备态：复位目标位置、识别当前帧并启动持续刷新
 void DisplayDlg::ShowInitGame()
 {
     this->GrabSingle();
@@ -613,14 +527,12 @@ void DisplayDlg::ShowInitGame()
     ballBk.y = 0.0;
     ballBk.theta = 0.0;
 
-    // 清除足球轨迹
     ClearBallTrail();
 
     m_pIdentify = m_pDispSingle;
     IdentifyAll();
     m_status = STATUS::Prepare;
 
-    // 启动定时器，持续更新画面
     if (!m_grabTimer->isActive()) {
         m_grabTimer->start(33); // 约30fps
     }
@@ -628,7 +540,7 @@ void DisplayDlg::ShowInitGame()
     this->repaint(); // 使用repaint立即重绘
 }
 
-// 功能：设置游戏状态，启动游戏逻辑
+// 进入比赛态
 
 void DisplayDlg::ShowStartGame()
 {
@@ -636,72 +548,47 @@ void DisplayDlg::ShowStartGame()
     StartGame();
 }
 
-//功能：停止定时器，设置停止状态
+// 停止抓取并复位状态（错误标志置位时跳过，避免异常状态下误操作）
 
 void DisplayDlg::Stop()
 {
     if (!m_bErrorSign) {
-        // 停止定时器
         m_grabTimer->stop();
 
-        // 停止摄像头抓取
         Camera* pCamera = Camera::GetInstance();
         if (pCamera->IsGrabbing()) {
             pCamera->StopGrabbing();
         }
 
-        // 设置状态为停止
         m_status = STATUS::Stop;
     }
 }
 
-//功能：设置当前操作状态
-
-// 功能：设置当前操作状态，并控制覆盖层的显示/隐藏
-// 对应 MFC：CDisplayDlg::SelectSetStatus(SET_STATUS s) { m_setStatus = s; }
-//
-// MFC 版本只需设置状态标志，因为 GDI 绘制是在同一个 DC 上直接操作。
-// Qt 版本需要额外管理 OverlayWidget 的可见性：
-//   - COLOR_SET：显示覆盖层，使用户可以在上面框选颜色区域
-//   - 其他状态：隐藏覆盖层，避免干扰其他模式的鼠标交互
+// 切换操作状态并管理采色覆盖层可见性：COLOR_SET 显示覆盖层供框选，其余状态隐藏避免干扰
 
 void DisplayDlg::SelectSetStatus(SET_STATUS s)
 {
     m_setStatus = s;
 
-    // 控制覆盖层可见性
     if (m_overlayWidget) {
         if (s == SET_STATUS::COLOR_SET) {
-            // 进入采色框选模式：显示覆盖层，清除之前的框选
             m_overlayWidget->clearSelectionRect();
             m_overlayWidget->show();
-            // 提升覆盖层到最前面，确保能接收鼠标事件
             m_overlayWidget->raise();
         }
         else {
-            // 离开采色框选模式：隐藏覆盖层
             m_overlayWidget->hide();
         }
     }
 }
 
-// 功能：获取当前框选矩形（图像坐标）
-// 供 ColorDlg::onZoom() 和 ColorDlg::onSample() 调用，读取用户框选的颜色区域。
-//
-// 坐标系说明：
-//   OverlayWidget 是 displayLabel 的子控件，其本地坐标直接对应图像坐标。
-//   因此 overlay 的 selectionRect 无需任何坐标转换即可作为图像坐标使用。
-//   （对比旧版本：需要手动减去 fpsLabel 的高度 32px 来转换坐标）
-//
-// 对应 MFC：CDisplayDlg::GetRect() const { return m_Rect; }
+// 框选矩形（图像坐标）：覆盖层坐标即图像坐标，无需转换；后备返回 m_Rect 供 BORDER_SET 使用
 
 QRect DisplayDlg::GetRect() const
 {
     if (m_overlayWidget && m_overlayWidget->hasSelection()) {
-        // 从覆盖层获取框选矩形（已是图像坐标，无需转换）
         return m_overlayWidget->getSelectionRect();
     }
-    // 后备：返回 DisplayDlg 自身的 m_Rect（BORDER_SET 等模式使用）
     return m_Rect;
 }
 
@@ -717,83 +604,66 @@ void DisplayDlg::setColorDlg(ColorDlg* dlg)
     m_pColorDlg = dlg;
 }
 
-// 功能：绘制足球场背景和机器人
+// 绘制场地背景 + 识别结果叠加（比赛/预备/非分割测试态）
+// 分割模式 RunTestSeg 由 IdentifyTest() 直接写 displayLabel，不走此处，避免场地背景覆盖分割图
 
 void DisplayDlg::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
 
-    // 足球场背景 + 识别叠加层：适用于比赛、预备、非分割动态测试状态
-    // 注意：RunTestSeg（分割模式）由 IdentifyTest() 直接管理 displayLabel 显示，
-    // 不走 paintEvent，避免场地背景覆盖黑色分割图
     if (m_status == STATUS::Game || m_status == STATUS::Prepare ||
         m_status == STATUS::RunTest) {
         QPixmap pixmap(DISPLAY_W, DISPLAY_H);
         pixmap.fill(Qt::transparent);
         QPainter painter(&pixmap);
 
-        // 绘制足球场背景
         painter.drawImage(0, 0, m_groundImage);
 
-        // 绘制机器人
         DrawRobot(&painter);
 
-        // 绘制对手
         DrawOpp(&painter);
 
-        // 绘制球
         DrawBall(&painter);
 
-        // 设置绘制好的pixmap
         displayLabel->setPixmap(pixmap);
     }
-    // 在其他状态下（如Display、Stop等），不进行任何绘制操作，避免干扰摄像头图像显示
 }
 
-// 功能：清除足球轨迹
+// 清除足球轨迹
 
 void DisplayDlg::ClearBallTrail()
 {
     m_ballTrail.clear();
 }
 
-// 功能：处理鼠标拖拽操作
-// 注意：COLOR_SET 框选逻辑已移至 OverlayWidget::mouseMoveEvent。
-// 此处保留空函数，将来如 BORDER_SET 模式需要拖拽交互可在此扩展。
+// 保留空实现：COLOR_SET 框选已交由 OverlayWidget，BORDER_SET 拖拽如需可在此扩展
 
 void DisplayDlg::mouseMoveEvent(QMouseEvent* event)
 {
     Q_UNUSED(event);
-    // 目前无 DisplayDlg 级别的拖拽逻辑
 }
 
-//功能：处理颜色设置时的鼠标按下操作
+// BORDER_SET 标定：记录标定点并转发给 DemarcateDlg，同时在画面上叠加十字标记
 
 void DisplayDlg::mousePressEvent(QMouseEvent* event)
 {
-    // event->pos() 是相对于 DisplayDlg 整体的坐标。
-    // 布局：fpsLabel（高 32px）在上，displayLabel（640×480）在下。
-    // 因此图像坐标 = 鼠标坐标 − fpsLabel 高度。
+    // DisplayDlg 整体坐标需减去 fpsLabel 高度才得到图像坐标
     QPoint pos = event->pos();
 
     if (m_setStatus == SET_STATUS::BORDER_SET) {
-        // ── 将 DisplayDlg 坐标转换为图像坐标 ─────────────────
         QPoint imagePos(pos.x(), pos.y() - fpsLabel->height());
 
-        // 确保点击落在图像范围内，否则忽略
         if (imagePos.x() < 0 || imagePos.x() >= DISPLAY_W ||
             imagePos.y() < 0 || imagePos.y() >= DISPLAY_H)
             return;
 
-        // 记录标记点（以图像坐标存储）
         addCalibPoint(imagePos);
 
-        // 转发给 DemarcateDlg 记录坐标
         if (m_pDemarcateDlg) {
             m_pDemarcateDlg->PushPoint(imagePos);
         }
 
-        // 用最近一帧重绘，叠加所有已标记的十字（位置已是图像坐标）
+        // 用最近一帧重绘，叠加所有已标记的十字
         QImage image(m_pDispSingle, DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
         QPixmap pixmap = QPixmap::fromImage(image);
         QPainter p(&pixmap);
@@ -810,13 +680,10 @@ void DisplayDlg::mousePressEvent(QMouseEvent* event)
         displayLabel->setPixmap(pixmap);
 
     }
-    // 注意：COLOR_SET 分支已移除，框选功能现在由 OverlayWidget 接管。
-    // OverlayWidget 作为 displayLabel 的子控件，直接处理鼠标事件，
-    // 无需在 DisplayDlg 中进行坐标转换（fpsLabel 偏移等）。
-    // 参见 OverlayWidget::mousePressEvent 和 OverlayWidget::mouseMoveEvent。
+    // COLOR_SET 框选由 OverlayWidget 直接处理，此处不再介入
 }
 
-//功能：定时获取并处理图像
+// 定时抓帧并按当前状态分发处理
 
 void DisplayDlg::onTimer()
 {
@@ -830,7 +697,7 @@ void DisplayDlg::onTimer()
         pCamera->StartGrabbing();
     }
 
-    // 预分配缓冲区，避免频繁内存分配
+    // 共享抓取缓冲区按需分配，仅创建一次
     if (!pBuffer) {
         pBuffer = new unsigned char[DISPLAY_W * DISPLAY_H * 3];
     }
@@ -847,7 +714,7 @@ void DisplayDlg::onTimer()
 
 
 
-//功能：计算并显示实时帧率
+// 由平均帧间隔换算实时 FPS 并刷新显示
 
 void DisplayDlg::updateFPS()
 {
@@ -857,12 +724,11 @@ void DisplayDlg::updateFPS()
     fpsLabel->setText(QString("FPS: %1").arg(m_fps, 0, 'f', 2));
 }
 
-//功能：根据当前状态处理图像并显示
+// 按状态分发：Display 直显，RunTest 识别+重绘，RunTestSeg 分割直显，Game 识别
 
 void DisplayDlg::ProcessImage(unsigned char* pBmp)
 {
     Camera* pCamera = Camera::GetInstance();
-    // 转换图像格式
     // pCamera->ConvertBitmap(m_pDispBitmap, pBmp, m_ImageSize.width(), m_ImageSize.height());
     memcpy(m_pDispBitmap, pBmp, m_ImageSize.width() * m_ImageSize.height() * 3);
 
@@ -886,7 +752,7 @@ void DisplayDlg::ProcessImage(unsigned char* pBmp)
     break;
     case STATUS::RunTestSeg:
     {
-        // IdentifyTest() 直接设置 displayLabel 的 pixmap，不需要 repaint
+        // 分割模式 IdentifyTest 直接写 displayLabel，无需 repaint
         this->IdentifyTest();
         m_DisplayAvg.Add(m_DisplayWatch.elapsed());
         m_DisplayWatch.restart();
@@ -904,13 +770,12 @@ void DisplayDlg::ProcessImage(unsigned char* pBmp)
     }
 }
 
-//功能：从摄像头获取一帧图像，使用与RetrieveResult一致的Pylon格式转换器
+// 抓单帧到 m_pDispSingle：暂停连续抓取后单帧取图，结束恢复原抓取状态
 
 bool DisplayDlg::GrabSingle()
 {
     Camera* pCamera = Camera::GetInstance();
 
-    // If continuous grabbing is active, pause it briefly to use GrabOne.
     bool wasGrabbing = pCamera->IsGrabbing();
     if (wasGrabbing) {
         pCamera->StopGrabbing();
@@ -918,22 +783,18 @@ bool DisplayDlg::GrabSingle()
 
     if (!pCamera->IsOpen()) {
         if (!pCamera->Open()) {
-            // Camera unavailable – leave m_pDispSingle as-is (grey placeholder)
             if (wasGrabbing) pCamera->StartGrabbing();
             return false;
         }
     }
 
-    // GrabOne uses ConvertBitmap internally; to stay consistent with
-    // RetrieveResult (which uses Pylon CImageFormatConverter → RGB8),
-    // we use StartGrabbing + RetrieveResult + StopGrabbing here too.
+    // 统一用 StartGrabbing+RetrieveResult 取图，保证与动态模式格式一致
     bool result = false;
     if (pCamera->StartGrabbing()) {
         result = pCamera->RetrieveResult(m_pDispSingle);
         pCamera->StopGrabbing();
     }
 
-    // Restore continuous grabbing if it was running before
     if (wasGrabbing) {
         pCamera->StartGrabbing();
     }
@@ -941,7 +802,7 @@ bool DisplayDlg::GrabSingle()
     return result;
 }
 
-//功能：从栈中弹出一个坐标点
+// 坐标点栈：泛洪填充用，溢出栈满返回 false
 
 bool DisplayDlg::pop(int& x, int& y)
 {
@@ -956,7 +817,6 @@ bool DisplayDlg::pop(int& x, int& y)
         return false;
 }
 
-// 功能：向栈中压入一个坐标点
 bool DisplayDlg::push(int x, int y)
 {
     if (stackPointer < StackSize)
@@ -970,19 +830,17 @@ bool DisplayDlg::push(int x, int y)
         return false;
 }
 
-// 功能：清空坐标点栈
 void DisplayDlg::emptyStack()
 {
     stackPointer = 0;
 }
 
-//功能：将RGB颜色转换为HSI颜色空间
+// 单像素 RGB→HSI：H 查表（放大 10 倍便于阈值比较），S/I 公式计算
 
 void DisplayDlg::RGBToHS(int m, int n, unsigned char* P, int& H, int& S, int& I)
 {
     int R, G, B;
     int index = (n * m_ImageSize.width() + m) * 3;
-    // Pylon RGB8packed / QImage::Format_RGB888: byte order = R, G, B
     R = *(P + index + 0);
     G = *(P + index + 1);
     B = *(P + index + 2);
@@ -991,24 +849,20 @@ void DisplayDlg::RGBToHS(int m, int n, unsigned char* P, int& H, int& S, int& I)
     I = (int)(R + G + B) / 3;
 }
 
-// 功能：绘制足球场背景、机器人和足球
+// 一次性绘制场地背景 + 己方/对方机器人 + 球
 
 void DisplayDlg::DrawAll(QPainter* painter)
 {
-    // 绘制足球场背景
     painter->drawImage(0, 0, m_groundImage);
 
-    // 绘制机器人
     DrawRobot(painter);
 
-    // 绘制对手
     DrawOpp(painter);
 
-    // 绘制球
     DrawBall(painter);
 }
 
-//功能：绘制对方机器人
+// 绘制对方机器人：品红描边 + 绿色填充，按朝向查 robot_xy 关键点连线
 
 void DisplayDlg::DrawOpp(QPainter* painter)
 {
@@ -1019,13 +873,13 @@ void DisplayDlg::DrawOpp(QPainter* painter)
     {
         if (OpprobotInfor[i].found)
         {
+            // 场地坐标→屏幕坐标的固定缩放偏移
             int x = (int)(OpprobotInfor[i].x * 2.5) + 45;
             int y = (int)(OpprobotInfor[i].y * 2.5) + 15;
             int theta = (int)OpprobotInfor[i].theta;
             if (theta < 0) theta += 360;
             if (theta > 359) continue;
 
-            // 绘制机器人形状
             painter->drawLine(x + robot_xy[theta][0][0], y + robot_xy[theta][0][1],
                 x + robot_xy[theta][1][0], y + robot_xy[theta][1][1]);
             painter->drawLine(x + robot_xy[theta][1][0], y + robot_xy[theta][1][1],
@@ -1041,7 +895,6 @@ void DisplayDlg::DrawOpp(QPainter* painter)
             painter->drawLine(x + robot_xy[theta][4][0], y + robot_xy[theta][4][1],
                 x + robot_xy[theta][11][0], y + robot_xy[theta][11][1]);
 
-            // 绘制编号
             if (x - 4 >= 0 && y - 5 >= 0)
             {
                 painter->drawText(x - 4, y - 5, 12, 13, Qt::AlignLeft, QString::number(i + 1));
@@ -1050,26 +903,22 @@ void DisplayDlg::DrawOpp(QPainter* painter)
     }
 }
 
-// 功能：绘制足球位置
+// 绘制球：橙色实心圆，仅画当前位置不画轨迹（每帧重建背景自然擦除上一帧）
 
 void DisplayDlg::DrawBall(QPainter* painter)
 {
-    // 与 MFC DrawBall 一致：只画当前球位置的红色圆点，不画轨迹
-    // MFC 通过 StretchBlt 从 groundDC 擦除上一帧 → 每帧重建场地背景自然实现
     if (ballInfor.found)
     {
-        // 场地坐标 → 屏幕坐标（与 MFC 一致：x*2.5+45, y*2.5+15）
         int x = (int)(ballInfor.x * 2.5) + 45;
         int y = (int)(ballInfor.y * 2.5) + 15;
 
-        // 绘制红色实心圆（半径 4px，与 MFC pDC->Ellipse(CRect(x-4,y-4,x+4,y+4)) 一致）
         painter->setPen(QPen(QColor(255, 128, 0), 1));
         painter->setBrush(QBrush(QColor(255, 128, 0)));
         painter->drawEllipse(x - 4, y - 4, 8, 8);
     }
 }
 
-//功能：绘制己方机器人
+// 绘制己方机器人：黄色描边，逻辑同 DrawOpp
 
 void DisplayDlg::DrawRobot(QPainter* painter)
 {
@@ -1085,7 +934,6 @@ void DisplayDlg::DrawRobot(QPainter* painter)
             if (theta < 0) theta += 360;
             if (theta > 359) continue;
 
-            // 绘制机器人形状
             painter->drawLine(x + robot_xy[theta][0][0], y + robot_xy[theta][0][1],
                 x + robot_xy[theta][1][0], y + robot_xy[theta][1][1]);
             painter->drawLine(x + robot_xy[theta][1][0], y + robot_xy[theta][1][1],
@@ -1101,7 +949,6 @@ void DisplayDlg::DrawRobot(QPainter* painter)
             painter->drawLine(x + robot_xy[theta][4][0], y + robot_xy[theta][4][1],
                 x + robot_xy[theta][11][0], y + robot_xy[theta][11][1]);
 
-            // 绘制编号
             if (x - 4 >= 0 && y - 5 >= 0)
             {
                 painter->drawText(x - 4, y - 5, 12, 13, Qt::AlignLeft, QString::number(i + 1));
@@ -1110,10 +957,9 @@ void DisplayDlg::DrawRobot(QPainter* painter)
     }
 }
 
-//功能：计算三个或四个值中的最小值
+// 四值取最小，供 MINS 调用
 int DisplayDlg::GetMinValue(int val1, int val2, int val3, int val4)
 {
-    // 清晰的最小值逻辑，易维护
     int minVal = val1;
     if (val2 < minVal) minVal = val2;
     if (val3 < minVal) minVal = val3;
@@ -1126,11 +972,8 @@ int DisplayDlg::MINS(int R, int G, int B, int N)
     return GetMinValue(R, G, B, N);
 }
 
-//功能：计算图像点的灰度值
-// 功能：将像素 RGB 编码为 15-bit 值（与 MFC screenBuffer 一致）
-// 对应 MFC screenBuffer（E:\bot\RobotFootball\DisplayDlg.cpp:1911）
-// MFC: r/8<<10 | g/8<<5 | b/8 → 用于判断 IdentifySearchLUT 的已访问标记色 (100,100,100)
-// 12684 = (12<<10 | 12<<5 | 12) = RGB(96,96,96) 的 15-bit 编码
+// 像素编码为 15-bit 值，用于与已访问标记色 (100,100,100) 及场地背景区分
+// 12684 = RGB(96,96,96) 的 15-bit 编码，代表场地背景
 int DisplayDlg::screenBuffer(int m, int n, unsigned char* P)
 {
     int index = (n * m_ImageSize.width() + m) * 3;
@@ -1140,7 +983,7 @@ int DisplayDlg::screenBuffer(int m, int n, unsigned char* P)
     return ((r & 0x1f) << 10 | (g & 0x1f) << 5 | (b & 0x1f));
 }
 
-//功能：判断像素是否符合指定对象的颜色阈值
+// 像素 HSI 是否落在对象阈值内：H 跨 0° 用 ||，否则用 &&
 
 bool DisplayDlg::JudgePixel(int object, int H, int S, int I)
 {
@@ -1169,15 +1012,10 @@ bool DisplayDlg::JudgePixel(int object, int H, int S, int I)
 }
 
 
-// 功能：判断像素颜色所属的对象类别
+// 统计 MEMB1/MEMB2/黑色像素数量判定颜色类型：1=紫 2=绿 0=黑 -1=不确定
 
-// 功能：根据参考点附近的 MEMB1/MEMB2 像素数量判断颜色类型
-// 对应 MFC JudgeColor（E:\bot\RobotFootball\DisplayDlg.cpp:1740）
-// a = MEMB1 像素数, b = MEMB2 像素数, c = 黑色像素数
-// 返回: 1=MEMB1(紫), 2=MEMB2(绿), 0=黑色, -1=无法判断
 int DisplayDlg::JudgeColor(int a, int b, int c)
 {
-    // MEMB1 和 MEMB2 同时大量出现 → 无法判断
     if (a >= 8 && b >= 8)
         return -1;
     if (a >= 8) return 1;      // MEMB1 为主
@@ -1186,7 +1024,7 @@ int DisplayDlg::JudgeColor(int a, int b, int c)
     return -1;                 // 像素数不足，无法判断
 }
 
-// 功能：查找符合目标对象颜色的像素
+// 读取单像素 HSI 并判定是否匹配对象颜色
 
 bool DisplayDlg::FindPixel(int object, int m, int n, unsigned char* P)
 {
@@ -1195,9 +1033,8 @@ bool DisplayDlg::FindPixel(int object, int m, int n, unsigned char* P)
     return JudgePixel(object, H, S, I);
 }
 
-// 功能：扫描线泛洪填充搜索并识别目标对象
-// 严格参考 MFC IdentifySearchLUT（E:\bot\RobotFootball\DisplayDlg.cpp:856）
-// 改动：适配 Qt 的 top-down 缓冲区布局（3 字节/像素 unsigned char*）
+// 扫描线泛洪填充：从种子点连通同色像素，统计面积/边界框/质心
+// 已访问像素置灰 (100,100,100) 防止重复匹配；球用更严格尺寸约束排除噪声
 
 bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart, bool isBall)
 {
@@ -1215,10 +1052,9 @@ bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin,
 
     if (!push(x, y)) return false;
 
-    // 扫描线泛洪填充（与 MFC 完全一致的算法）
     while (pop(x, y))
     {
-        // 从当前点向上扫描找色块顶部
+        // 向上扫描到色块顶部
         y1 = y;
         while (y1 >= 0) {
             if (!FindPixel(tab, x, y1, pStart))
@@ -1230,13 +1066,12 @@ bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin,
         spanLeft = false;
         spanRight = false;
 
-        // 从顶部向下扫描整列
+        // 从顶部向下扫描整列，标记已访问并统计，左右邻居入栈扩展
         while (y1 < n)
         {
             if (!FindPixel(tab, x, y1, pStart))
                 break;
 
-            // 标记已访问（3 字节全设为灰色，防止 FindPixel 再次匹配）
             int idx = (y1 * m + x) * 3;
             pStart[idx]     = 100;  // R
             pStart[idx + 1] = 100;  // G
@@ -1246,13 +1081,11 @@ bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin,
             sumx += x;
             sumy += y1;
 
-            // 更新边界框
             if (x <= m_xLeft) m_xLeft = x;
             else if (x >= m_xRight) m_xRight = x;
             if (y1 <= m_yTop) m_yTop = y1;
             else if (y1 >= m_yBottom) m_yBottom = y1;
 
-            // 左侧邻居扩展
             if (!spanLeft && x > 0 && FindPixel(tab, x - 1, y1, pStart))
             {
                 if (!push(x - 1, y1)) return false;
@@ -1263,7 +1096,6 @@ bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin,
                 spanLeft = false;
             }
 
-            // 右侧邻居扩展
             if (!spanRight && x < m - 1 && FindPixel(tab, x + 1, y1, pStart))
             {
                 if (!push(x + 1, y1)) return false;
@@ -1278,29 +1110,21 @@ bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin,
         }
     }
 
-    // 保存像素计数（对应 MFC m_TargetN.num = sum）
     m_lastBlobCount = sum;
 
-    // 尺寸和形状检查
-    // 球专用约束（对应 MFC SeachOppAndBall 第 1480-1484 行）：
-    //   球的宽高各 2~15 像素，排除大面积噪声
-    // 非球约束（对应 MFC 第 1487-1489 行）：
-    //   宽高各 2~25 像素
+    // 尺寸与边界框形状约束：球宽高 2~15，非球宽高 2~25
     if (sum >= SizeMin && sum <= SizeMax)
     {
         int bw = m_xRight - m_xLeft;
         int bh = m_yBottom - m_yTop;
         if (isBall) {
-            // 球：宽高各 2~15（MFC SeachOppAndBall BALL 分支）
             if (bw < 2 || bw > 15 || bh < 2 || bh > 15)
                 return false;
         } else {
-            // 非球：宽高各 2~25（MFC SeachOppAndBall OPP 分支）
             if (bw < 2 || bw > 25 || bh < 3 || bh > 25)
                 return false;
         }
 
-        // 计算色块质心（与 MFC m_Target 一致）
         m_Target[tab].setX(sumx / sum);
         m_Target[tab].setY(sumy / sum);
         return true;
@@ -1308,11 +1132,10 @@ bool DisplayDlg::IdentifySearchLUT(int tab, int Startx, int Starty, int SizeMin,
     return false;
 }
 
-//功能：启动目标识别（球 + 己方机器人 + 对手）
+// 单帧目标识别：复位结果后调用 IdentifyAll，再对球做位置滤波
 
 void DisplayDlg::StartTest()
 {
-    // 清空上一帧的识别结果
     for (int i = 0; i < MAX_ROBOT_NUM; i++) {
         robotInfor[i].found = false;
         OpprobotInfor[i].found = false;
@@ -1322,22 +1145,16 @@ void DisplayDlg::StartTest()
     ObjectFound[10] = false;
     ObjectFound[11] = false;
 
-    // 设置识别图像指针（FindBlackID/FindRobotID 需要读取原始图像）
-    // 对应 MFC: m_pIdentify = (RGBTRIPLE*)m_pDispBitmap;
     m_pIdentify = m_pDispBitmap;
 
-    // 一体化识别：OPP + TEAM + BALL，内部调用 IdentiRoboFromTargets
-    // 对应 MFC: IdentifyAll() → 内含 OPP/TEAM/BALL 检测 + IdentiRobo(NumTeam)
     IdentifyAll();
     BallPosFilter();      // 球位置滤波防抖（MFC 在 IdentifyAll 后调用）
 }
 
 // ═══════════════════════════════════════════════════════════════
-// IdentifyAll - 一体化目标识别（对应 MFC IdentifyAll，E:\bot\RobotFootball\DisplayDlg.cpp:927）
+// 一体化目标识别：步长 4 扫描，else if 链 OPP→TEAM→BALL
+// 循环后统一转坐标 + 编号识别 + 球选最大候选
 // ═══════════════════════════════════════════════════════════════
-// MFC 流程：一个循环，步长 4，else if 链 OPP→TEAM→BALL
-//           循环后统一转坐标 + IdentiRobo(NumTeam) + 球选最大候选
-// Qt 改造：保持同样结构，用 QT_BALL/QT_OPP/QT_TEAM 映射阈值索引
 void DisplayDlg::IdentifyAll()
 {
     int i, j;
@@ -1346,20 +1163,19 @@ void DisplayDlg::IdentifyAll()
     int n = m_ImageSize.height();
     int H, S, I;
 
-    // 清空
     for (i = 0; i < MAX_ROBOT_NUM; i++)
         ObjectFound[i] = false;
     ObjectFound[10] = false;
     ObjectFound[11] = false;
 
-    // 临时存储（对应 MFC TemOpp/TemTeam/TemBall）
+    // 候选结果临时存储
     struct Candidate { int x, y, num; };
     Candidate TemBall[10];
     QPoint TeamTarget[20], OppTarget[20];
     double NormalTheta[20], OppNormalTheta[20];
     int NumOpp = 0, NumBall = 0, NumTeam = 0;
 
-    // 复制帧缓冲（泛洪填充会修改像素数据）
+    // 复制帧缓冲：泛洪填充会改写像素，必须拷贝避免污染原图
     unsigned char* m_pTestBitmap = new unsigned char[m * n * 3];
     memcpy(m_pTestBitmap, m_pDispBitmap, m * n * 3);
     unsigned char* pTest = m_pTestBitmap;
@@ -1367,11 +1183,7 @@ void DisplayDlg::IdentifyAll()
     ColorDlg* pColorDlg = m_pColorDlg ? m_pColorDlg : ColorDlg::getInstance();
     const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
 
-    // ── HSI 阈值匹配辅助函数 ──
-    // 对应 MFC FindPixel（E:\bot\RobotFootball\DisplayDlg.cpp:1245）中的双分支判断：
-    //   H_low <= H_high → 正常范围，用 &&（H >= low && H <= high）
-    //   H_low >  H_high → 跨越 0°，用 ||（H >= low || H <= high）
-    // S 和 I 始终用 &&（不跨越 0°）
+    // HSI 阈值匹配：H 跨 0° 用 ||，否则 &&；S/I 恒用 &&
     auto hsiMatch = [&](int idx) -> bool {
         int hLow = HSIThreshold[idx][0], hHigh = HSIThreshold[idx][1];
         int sLow = HSIThreshold[idx][2], sHigh = HSIThreshold[idx][3];
@@ -1381,15 +1193,13 @@ void DisplayDlg::IdentifyAll()
         return hOK && (S >= sLow && S <= sHigh) && (I >= iLow && I <= iHigh);
     };
 
-    // ── 主扫描循环（步长 4，else if 链：OPP → TEAM → BALL）──
-    // 对应 MFC IdentifyAll 第 934-1001 行
+    // 主扫描循环：OPP 优先于 TEAM 优先于 BALL
     for (j = 0; j < n; j += 4)
     {
         for (i = 0; i < m; i += 4)
         {
             RGBToHS(i, j, pTest, H, S, I);
 
-            // 1. OPP 优先检测（对应 MFC: FindPixel(OPP, i, j, m_pIdentify)）
             if (hsiMatch(QT_OPP))
             {
                 xLeftTem = m_xLeft; xRightTem = m_xRight;
@@ -1410,7 +1220,6 @@ void DisplayDlg::IdentifyAll()
                 }
                 else { m_xLeft = xLeftTem; m_xRight = xRightTem; m_yTop = yTopTem; m_yBottom = yBottomTem; }
             }
-            // 2. TEAM（对应 MFC: FindPixel(TEAM, i, j, m_pIdentify)）
             else if (hsiMatch(QT_TEAM))
             {
                 xLeftTem = m_xLeft; xRightTem = m_xRight;
@@ -1423,7 +1232,7 @@ void DisplayDlg::IdentifyAll()
                     int cy = (m_yTop + m_yBottom) / 2;
                     TeamTarget[NumTeam] = QPoint(cx, cy);
 
-                    // 通过边界框估算角度（简化版，MFC 用椭圆拟合）
+                    // 边界框宽高比估算朝向：宽>高为水平，否则垂直
                     int w = m_xRight - m_xLeft;
                     int h = m_yBottom - m_yTop;
                     NormalTheta[NumTeam] = (w >= h) ? 0.0 : M_PI / 2;
@@ -1431,7 +1240,6 @@ void DisplayDlg::IdentifyAll()
                 }
                 else { m_xLeft = xLeftTem; m_xRight = xRightTem; m_yTop = yTopTem; m_yBottom = yBottomTem; }
             }
-            // 3. BALL（对应 MFC: FindPixel(BALL, i, j, m_pIdentify)）
             else if (NumBall < 5 && hsiMatch(QT_BALL))
             {
                 xLeftTem = m_xLeft; xRightTem = m_xRight;
@@ -1453,16 +1261,12 @@ void DisplayDlg::IdentifyAll()
         }
     }
 
-    // ── 循环后统一处理（对应 MFC 第 1003-1056 行）──
-
-    // 己方机器人：用 TeamTarget + NormalTheta 做编号识别（isOpponent=false）
+    // 统一处理：己方/对方编号识别，球选面积最大的候选并转场地坐标
     IdentiRoboFromTargets(TeamTarget, NormalTheta, NumTeam, false);
 
-    // 对手：用 OppTarget + OppNormalTheta 做编号识别（isOpponent=true）
-    // 对手机器人侧边标记与己方相同（紫1-3，绿4-5），使用相同的编号逻辑
+    // 对方侧边标记与己方相同，复用同一编号逻辑
     IdentiRoboFromTargets(OppTarget, OppNormalTheta, NumOpp, true);
 
-    // 球：选最大候选，转坐标（对应 MFC 第 1040-1056 行）
     qDebug() << "[Ball] NumBall=" << NumBall
              << "Threshold=[" << HSIThreshold[QT_BALL][0] << HSIThreshold[QT_BALL][1]
              << HSIThreshold[QT_BALL][2] << HSIThreshold[QT_BALL][3]
@@ -1486,7 +1290,7 @@ void DisplayDlg::IdentifyAll()
     delete[] m_pTestBitmap;
 }
 
-// 功能：过滤足球位置，防止抖动
+// 球位置防抖：位移超过阈值时视为误检，回退到上一帧位置
 
 void DisplayDlg::BallPosFilter()
 {
@@ -1507,20 +1311,10 @@ void DisplayDlg::BallPosFilter()
     ballBk = ballInfor;
 }
 
-// 功能：识别己方和对方机器人
+// 己方/对方机器人识别（独立扫描版本）
+// 己方流程：泛洪找色块→边界框估角度→算4参考点→FindBlackID定朝向→FindRobotID定编号
+// 对方只取位置不做编号
 
-// 功能：识别己方和对方机器人
-// 对应 MFC IdentiRobo（E:\bot\RobotFootball\DisplayDlg.cpp:1189）
-//
-// 己方机器人识别流程：
-//   1. 泛洪填充找到队色色块，得到中心坐标 (TeamTarget)
-//   2. 通过色块形状计算法线角度 (NormalTheta)
-//   3. 根据角度计算 4 个参考点位置（距离中心 m_Length 处）
-//   4. FindBlackID 检测参考点黑色/非黑色 → 确定机器人朝向
-//   5. FindRobotID 检测参考点的 MEMB1/MEMB2 颜色组合 → 确定编号
-//   6. ground.groundInfo[][] 将像素坐标转为场地坐标
-//
-// 对手机器人：只检测色块位置，不做编号识别
 void DisplayDlg::IdentiRobo(int ObjectCount)
 {
     int i, j;
@@ -1530,7 +1324,6 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
     int xLeftTem, xRightTem, yTopTem, yBottomTem;
     int robotNum = 0;
 
-    // 临时存储识别结果（与 MFC TemTeam/TemOpp 对应）
     QPoint TeamTarget[20];
     double NormalTheta[20];
     int NumTeam = 0;
@@ -1542,7 +1335,7 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
     ColorDlg* pColorDlg = m_pColorDlg ? m_pColorDlg : ColorDlg::getInstance();
     const int(*HSIThreshold)[6] = pColorDlg->getHSIThreshold();
 
-    // ── 第一遍扫描：找到所有色块 ──
+    // 第一遍：扫描全部像素找色块
     for (j = 0; j < n; j++)
     {
         for (i = 0; i < m; i++)
@@ -1569,10 +1362,9 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
 
                     if (ObjectCount == 4)
                     {
-                        // ── 对手：只记录位置，不做编号识别 ──
+                        // 对手：仅记录位置，Y 翻转适配场地坐标系
                         if (robotNum < MAX_ROBOT_NUM && x >= 0 && x < DISPLAY_W && y >= 0 && y < DISPLAY_H)
                         {
-                            // Y 翻转：Qt top-down 像标 → MFC bottom-up 场地标
                             int gy = DISPLAY_H - 1 - y;
                             OpprobotInfor[robotNum].x = ground.groundInfo[x][gy].x;
                             OpprobotInfor[robotNum].y = ground.groundInfo[x][gy].y;
@@ -1583,19 +1375,15 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
                     }
                     else
                     {
-                        // ── 己方：记录色块中心，计算法线角度 ──
+                        // 己方：记录色块中心，用边界框宽高比估算法线角度
                         if (NumTeam < 20)
                         {
                             TeamTarget[NumTeam] = QPoint(x, y);
 
-                            // 通过色块边界框计算法线角度
-                            // 对应 MFC SearchTeam 中的椭圆拟合
                             int w = m_xRight - m_xLeft;
                             int h = m_yBottom - m_yTop;
                             if (w > 3 && h > 3)
                             {
-                                // 简化版：用边界框的宽高比估算角度
-                                // 宽 > 高 → 水平方向，高 > 宽 → 垂直方向
                                 if (w >= h)
                                     NormalTheta[NumTeam] = 0.0;      // 水平
                                 else
@@ -1620,8 +1408,7 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
         }
     }
 
-    // ── 第二遍：对己方色块进行编号识别 ──
-    // 对应 MFC IdentiRobo（E:\bot\RobotFootball\DisplayDlg.cpp:1189）
+    // 第二遍：己方色块编号识别
     double m_Length = 7.5;
     m_pIdentify = m_pDispBitmap;  // FindBlackID 需要读取原始图像
 
@@ -1630,8 +1417,7 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
         int RobotID = -1;
         double OrientAngle = 0;
 
-        // 根据法线角度计算 4 个参考点位置
-        // 对应 MFC：temptheta = Pi/2 - atan(0.75) - NormalTheta[i]
+        // 由法线角度算 4 个参考点位置
         double temptheta = M_PI / 2 - atan(0.75) - NormalTheta[i];
         QPoint ReferPoint[4];
         ReferPoint[0] = QPoint((int)(TeamTarget[i].x() + m_Length * cos(temptheta)),
@@ -1648,28 +1434,24 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
         for (j = 0; j < 4; j++)
             blackID[j] = FindBlackID(ReferPoint[j].x(), ReferPoint[j].y(), j);
 
-        // 根据黑色参考点组合确定朝向和编号
+        // 黑色参考点组合决定朝向和待识别的编号参考点
         if (blackID[0] && blackID[1])
         {
-            // 参考点 0,1 为黑 → 朝向 = NormalTheta + π
             OrientAngle = NormalTheta[i] + M_PI;
             RobotID = FindRobotID(ReferPoint[2], ReferPoint[3]);
         }
         else if (blackID[2] && blackID[3])
         {
-            // 参考点 2,3 为黑 → 朝向 = NormalTheta
             OrientAngle = NormalTheta[i];
             RobotID = FindRobotID(ReferPoint[0], ReferPoint[1]);
         }
         else if (!blackID[0] && !blackID[1])
         {
-            // 参考点 0,1 非黑 → 朝向 = NormalTheta
             OrientAngle = NormalTheta[i];
             RobotID = FindRobotIDD(ReferPoint[2], ReferPoint[3]);
         }
         else if (!blackID[2] && !blackID[3])
         {
-            // 参考点 2,3 非黑 → 朝向 = NormalTheta + π
             OrientAngle = NormalTheta[i] + M_PI;
             RobotID = FindRobotIDD(ReferPoint[0], ReferPoint[1]);
         }
@@ -1680,7 +1462,7 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
             int py = TeamTarget[i].y();
             if (px >= 0 && px < DISPLAY_W && py >= 0 && py < DISPLAY_H)
             {
-                // Y 翻转：Qt top-down 像标 → MFC bottom-up 场地标
+                // Y 翻转：像素 top-down → 场地 bottom-up
                 int gpy = DISPLAY_H - 1 - py;
                 robotInfor[RobotID].theta = OrientAngle * 180.0 / M_PI;
                 robotInfor[RobotID].x = ground.groundInfo[px][gpy].x;
@@ -1696,18 +1478,15 @@ void DisplayDlg::IdentiRobo(int ObjectCount)
 }
 
 // ═══════════════════════════════════════════════════════════════
-// IdentiRoboFromTargets - 对已聚类的己方色块做编号识别
-// 由 IdentifyAll() 调用，接收 TeamTarget + NormalTheta
-// 对应 MFC IdentiRobo（E:\bot\RobotFootball\DisplayDlg.cpp:1189）
+// 编号识别：对已聚类的色块用参考点黑色/颜色组合定朝向与编号
+// 己方与对方共用同一编号逻辑（侧边标记一致）
 // ═══════════════════════════════════════════════════════════════
 void DisplayDlg::IdentiRoboFromTargets(QPoint targets[], double normalTheta[], int count, bool isOpponent)
 {
     double m_Length = 7.5;
     m_pIdentify = m_pDispBitmap;  // FindBlackID 需要读取原始图像
 
-    // 根据 isOpponent 选择目标数组
-    // isOpponent=false → robotInfor[]（己方）
-    // isOpponent=true  → OpprobotInfor[]（对方，侧边标记与己方相同：紫1-3，绿4-5）
+    // isOpponent 决定结果写入己方还是对方数组
     RobotInford* resultArr = isOpponent ? OpprobotInfor : robotInfor;
 
     for (int i = 0; i < count; i++)
@@ -1715,8 +1494,6 @@ void DisplayDlg::IdentiRoboFromTargets(QPoint targets[], double normalTheta[], i
         int RobotID = -1;
         double OrientAngle = 0;
 
-        // 根据法线角度计算 4 个参考点位置
-        // 对应 MFC：temptheta = Pi/2 - atan(0.75) - NormalTheta[i]
         double temptheta = M_PI / 2 - atan(0.75) - normalTheta[i];
         QPoint ReferPoint[4];
         ReferPoint[0] = QPoint((int)(targets[i].x() + m_Length * cos(temptheta)),
@@ -1728,13 +1505,10 @@ void DisplayDlg::IdentiRoboFromTargets(QPoint targets[], double normalTheta[], i
         ReferPoint[3] = QPoint((int)(targets[i].x() + m_Length * cos(temptheta + 2 * atan(0.75) + M_PI)),
                                 (int)(targets[i].y() + m_Length * sin(temptheta + 2 * atan(0.75) + M_PI)));
 
-        // 检测 4 个参考点是否为黑色
         bool blackID[4] = {false, false, false, false};
         for (int j = 0; j < 4; j++)
             blackID[j] = FindBlackID(ReferPoint[j].x(), ReferPoint[j].y(), j);
 
-        // 根据黑色参考点组合确定朝向和编号
-        // 己方和对方使用相同的侧边标记（紫1-3，绿4-5），编号逻辑一致
         if (blackID[0] && blackID[1])
         {
             OrientAngle = normalTheta[i] + M_PI;
@@ -1773,17 +1547,9 @@ void DisplayDlg::IdentiRoboFromTargets(QPoint targets[], double normalTheta[], i
     }
 }
 
-// 功能：通过参考点的 MEMB1/MEMB2 颜色组合查找机器人编号
-// 对应 MFC FindRobotID（E:\bot\RobotFootball\DisplayDlg.cpp:1377）
-// 在参考点 RP1 和 RP2 附近各取 5x5 区域，统计 MEMB1/MEMB2/黑色像素数量
-// 根据颜色组合确定机器人编号
-//
-// 编号对照表：
-//   RPID1=0(黑)  RPID2=1(紫)  → 0号车
-//   RPID1=1(紫)  RPID2=0(黑)  → 1号车
-//   RPID1=1(紫)  RPID2=1(紫)  → 2号车
-//   RPID1=0(黑)  RPID2=2(绿)  → 3号车
-//   RPID1=2(绿)  RPID2=0(黑)  → 4号车
+// 在两个参考点附近各取 5x5 区域统计 MEMB1/MEMB2/黑色像素，按颜色组合定编号
+// 编号对照: (RPID1,RPID2) 0/1→0号, 1/0→1号, 1/1→2号, 0/2→3号, 2/0→4号,
+//           2/2→5号, 2/1→6号, 1/2→7号；RPID: 0=黑 1=紫 2=绿
 int DisplayDlg::FindRobotID(QPoint RP1, QPoint RP2)
 {
     int roboID, RPID1, RPID2;
@@ -1791,7 +1557,6 @@ int DisplayDlg::FindRobotID(QPoint RP1, QPoint RP2)
     int sum1, sum2, sum0;
     int H = 0, S = 0, I = 0;
 
-    // 检测参考点 1 附近的 5x5 区域
     sum1 = sum2 = sum0 = 0;
     for (jj = RP1.y() - 2; jj <= RP1.y() + 2; jj++)
         for (ii = RP1.x() - 2; ii <= RP1.x() + 2; ii++)
@@ -1807,7 +1572,6 @@ int DisplayDlg::FindRobotID(QPoint RP1, QPoint RP2)
         }
     RPID1 = JudgeColor(sum1, sum2, sum0);
 
-    // 检测参考点 2 附近的 5x5 区域
     sum1 = sum2 = sum0 = 0;
     for (jj = RP2.y() - 2; jj <= RP2.y() + 2; jj++)
         for (ii = RP2.x() - 2; ii <= RP2.x() + 2; ii++)
@@ -1823,7 +1587,6 @@ int DisplayDlg::FindRobotID(QPoint RP1, QPoint RP2)
         }
     RPID2 = JudgeColor(sum1, sum2, sum0);
 
-    // 根据颜色组合确定机器人编号
     if (RPID1 == 0 && RPID2 == 1) roboID = 0;
     else if (RPID1 == 1 && RPID2 == 0) roboID = 1;
     else if (RPID1 == 1 && RPID2 == 1) roboID = 2;
@@ -1837,21 +1600,14 @@ int DisplayDlg::FindRobotID(QPoint RP1, QPoint RP2)
     return roboID;
 }
 
-// 功能：通过参考点的 MEMB1/MEMB2 颜色组合查找机器人编号（备用方法）
-// 对应 MFC FindRobotIDD（E:\bot\RobotFootball\DisplayDlg.cpp:1333）
-// 与 FindRobotID 相同的检测逻辑，用于当黑色参考点检测不确定时的后备
+// FindRobotID 的别名：黑色参考点检测不确定时的后备入口，逻辑相同
 int DisplayDlg::FindRobotIDD(QPoint RP1, QPoint RP2)
 {
-    // 与 FindRobotID 使用相同的颜色组合逻辑
     return FindRobotID(RP1, RP2);
 }
 
-// 功能：查找黑色区域
+// 检测参考点 3x3 区域黑色像素数：>=5 判黑，否则记录计数供后续判断
 
-// 功能：检测参考点附近是否有黑色区域
-// 对应 MFC FindBlackID（E:\bot\RobotFootball\DisplayDlg.cpp:1302）
-// 检查以 (m,n) 为中心的 3x3 区域，统计非 MEMB1/MEMB2 且非场地背景的黑色像素
-// 黑色像素 >= 5 则判定为黑色区域
 bool DisplayDlg::FindBlackID(int m, int n, int Num)
 {
     int ii, jj;
@@ -1863,7 +1619,7 @@ bool DisplayDlg::FindBlackID(int m, int n, int Num)
         {
             if (jj < 0 || jj >= DISPLAY_H || ii < 0 || ii >= DISPLAY_W) continue;
             RGBToHS(ii, jj, m_pIdentify, H, S, I);
-            // 不是 MEMB1、不是 MEMB2、不是场地背景(12684) → 黑色
+            // 非 MEMB1、非 MEMB2、非场地背景即视为黑色
             if (!JudgePixel(1, H, S, I)
                 && !JudgePixel(2, H, S, I)
                 && (screenBuffer(ii, jj, m_pIdentify) != 12684))
@@ -1880,7 +1636,7 @@ bool DisplayDlg::FindBlackID(int m, int n, int Num)
     }
 }
 
-// 功能：搜索对手和足球
+// 四邻接泛洪填充搜索色块（旧版接口，按面积区间判定有效性）
 
 bool DisplayDlg::SeachOppAndBall(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart)
 {
@@ -1931,7 +1687,7 @@ bool DisplayDlg::SeachOppAndBall(int tab, int Startx, int Starty, int SizeMin, i
     }
 }
 
-//功能：搜索队伍
+// 四邻接泛洪填充搜索色块（旧版接口，按面积区间判定有效性）
 
 bool DisplayDlg::SearchTeam(int tab, int Startx, int Starty, int SizeMin, int SizeMax, unsigned char* pStart)
 {
@@ -1982,16 +1738,10 @@ bool DisplayDlg::SearchTeam(int tab, int Startx, int Starty, int SizeMin, int Si
     }
 }
 
-// 功能：图像分割模式的动态测试
-// 严格参考 MFC IdentifyTest（E:\bot\RobotFootball\DisplayDlg.cpp:785-833）
-// 黑色背景上用绿色边框+红色十字线标记检测到的色块
+// 图像分割测试：黑底上用绿色边框 + 红色十字标记检测到的色块，直接写 displayLabel
 
 void DisplayDlg::IdentifyTest()
 {
-    // 对应 MFC IdentifyTest（E:\bot\RobotFootball\DisplayDlg.cpp:785）
-    // 每帧重新创建黑色背景，只在检测到色块的位置画绿色边框+红色十字线
-
-    // 获取当前采色对象（使用实际的标签页实例，而非单例）
     ColorDlg* pColorDlg = m_pColorDlg ? m_pColorDlg : ColorDlg::getInstance();
     int object = pColorDlg->currentObject();
     qDebug() << "[IdentifyTest] object=" << object
@@ -1999,45 +1749,36 @@ void DisplayDlg::IdentifyTest()
              << "," << pColorDlg->getHSIThreshold()[object][1] << "]";
     if (object < 0 || object >= 8) return;
 
-    // 创建黑色背景 QImage（每帧重建，对应 MFC destDC.FillSolidRect 黑色）
     QImage segImage(DISPLAY_W, DISPLAY_H, QImage::Format_RGB888);
     segImage.fill(Qt::black);
 
-    // 拷贝 m_pDispBitmap 到临时缓冲区（泛洪填充会修改像素数据，不能改原图）
+    // 拷贝缓冲：泛洪填充会改写像素，不能污染原图
     int bufSize = DISPLAY_W * DISPLAY_H * 3;
     unsigned char* pTestBitmap = new unsigned char[bufSize];
     memcpy(pTestBitmap, m_pDispBitmap, bufSize);
 
-    // 创建 QPainter（在循环外创建一次，对应 MFC 在循环外创建 pDC1/pDC2）
     QPainter painter(&segImage);
     painter.setRenderHint(QPainter::Antialiasing, false);
 
-    // 绿色画笔（2px）用于画色块边框，对应 MFC IdentiPen1(PS_SOLID, 2, RGB(0,255,0))
     QPen greenPen(QColor(0, 255, 0), 2);
-    // 红色画笔（1px）用于画十字线，对应 MFC IdentiPen2(PS_SOLID, 1, RGB(255,0,0))
     QPen redPen(QColor(255, 0, 0), 1);
 
     int Num = 0;
 
-    // 每隔 4 像素扫描（对应 MFC for i=0..DISPLAY_W step 4, j=0..DISPLAY_H step 4）
+    // 步长 4 扫描，命中颜色即泛洪找色块（面积 30~300，最多 20 个）
     for (int i = 0; i < DISPLAY_W; i += 4) {
         for (int j = 0; j < DISPLAY_H; j += 4) {
-            // 检测当前像素是否匹配对象颜色
             if (FindPixel(object, i, j, pTestBitmap)) {
-                // 泛洪填充找色块（面积 30~300 像素，最多 20 个）
                 if (Num < 20 && IdentifySearchLUT(object, i, j, 30, 300, pTestBitmap)) {
-                    // 边界有效性检查（对应 MFC m_Target 范围判断）
                     if (m_Target[object].x() < 0 || m_Target[object].x() >= DISPLAY_W ||
                         m_Target[object].y() < 0 || m_Target[object].y() >= DISPLAY_H)
                         continue;
 
-                    // 画绿色边框（对应 MFC pDC1->MoveTo/LineTo 四条边）
                     painter.setPen(greenPen);
                     painter.setBrush(Qt::NoBrush);
                     painter.drawRect(m_xLeft, m_yTop,
                                     m_xRight - m_xLeft, m_yBottom - m_yTop);
 
-                    // 画红色十字线（对应 MFC pDC2 水平线+垂直线）
                     painter.setPen(redPen);
                     painter.drawLine(m_xLeft, m_Target[object].y(),
                                     m_xRight, m_Target[object].y());
@@ -2052,19 +1793,16 @@ void DisplayDlg::IdentifyTest()
     painter.end();
     delete[] pTestBitmap;
 
-    // 显示分割结果（对应 MFC SetDIBitsToDevice）
     displayLabel->setPixmap(QPixmap::fromImage(segImage));
 }
 
-//功能：开始比赛，进行目标识别和绘制
+// 比赛态入口：实际识别与绘制由 onTimer→ProcessImage→paintEvent 驱动
 
 void DisplayDlg::StartGame()
 {
-    // 比赛开始，需要进行目标识别和绘制
-    // 定时器会触发onTimer，持续更新图像
 }
 
-//功能：分析矩形区域内的颜色
+// 统计矩形区域内符合 HSI 阈值的像素点集
 
 void DisplayDlg::ColorAnalyse(const QRect& rect, int yi[], std::vector<QPoint>& vecColorSet)
 {
@@ -2090,7 +1828,7 @@ void DisplayDlg::ColorAnalyse(const QRect& rect, int yi[], std::vector<QPoint>& 
     }
 }
 
-// 功能：分析点集合内的颜色
+// 统计点集合中符合 HSI 阈值的像素
 
 void DisplayDlg::ColorAnalyse(const std::vector<QPoint>& pts, int yi[], std::vector<QPoint>& vecColorSet)
 {

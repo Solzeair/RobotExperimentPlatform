@@ -13,128 +13,115 @@
 QtWidgetDesign::QtWidgetDesign(QWidget* parent)
     : CFrameLessWidgetBase(parent)
 {
-    // 保持主窗口的宽度不变，只减小高度
     this->setMinimumSize(1400, 700);
 
-    // 将窗口移动到屏幕正中央
+    // 基于屏幕可用区（扣除任务栏）居中，避免标题栏被任务栏遮挡
     QScreen* screen = QGuiApplication::primaryScreen();
     if (screen) {
-        // 获取屏幕的可用几何尺寸（即扣除 Windows 底部任务栏后的实际可用范围）
         QRect screenRect = screen->availableGeometry();
-        // 计算居中坐标：(屏幕宽高 - 窗口宽高) / 2
         int x = (screenRect.width() - this->width()) / 2;
         int y = (screenRect.height() - this->height()) / 2;
-        // 移动窗口到计算出的中心坐标
         this->move(x, y);
     }
 
-    // 调用父类的方法设置标题栏文本
-    this->setWindowTitleText("XSYU Football Robot Experimental Platform"); // XSYU 足球机器人 实验平台
+    this->setWindowTitleText("XSYU Football Robot Experimental Platform");
 
-    // 创建主布局
+    // 主布局：左侧为相机显示区，右侧为功能标签页，二者按 stretch 分配剩余空间
     QHBoxLayout* mainLayout = new QHBoxLayout();
-    mainLayout->setSpacing(10);  // 左侧显示区和右侧标签页之间的间距
+    mainLayout->setSpacing(10);
 
-    // 左侧显示区域 - 与MFC版本保持一致，固定大小不随窗口变化
+    // 左侧显示区固定尺寸，保证相机画面比例与场地标定坐标不随窗口缩放而失真
     DisplayDlg* displayDlg = new DisplayDlg(this);
-    displayDlg->setFixedSize(640, 512);  // 480显示区域 + 32帧率标签（与右侧标签栏高度一致）
+    displayDlg->setFixedSize(640, 512);
 
-    // 创建垂直布局，包含显示区域和调试信息区域
     QVBoxLayout* leftLayout = new QVBoxLayout();
-    leftLayout->setSpacing(10);  // 显示区域和调试区域之间的间距
-    leftLayout->addWidget(displayDlg);  // 顶部放置显示区域（固定大小）
-    
-    // 调试信息区域 - 可伸缩以填满剩余空间
+    leftLayout->setSpacing(10);
+    leftLayout->addWidget(displayDlg);
+
+    // 调试信息区：可伸缩填满左侧剩余空间，供各模块输出运行日志
     QTextEdit* debugText = new QTextEdit(this);
-    debugText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);  // 调试区域自适应
-    debugText->setMinimumHeight(80);  // 设置最小高度
+    debugText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    debugText->setMinimumHeight(80);
     debugText->setReadOnly(true);
     debugText->setStyleSheet("font-family: Consolas; font-size: 10pt;");
-    leftLayout->addWidget(debugText);  // 添加调试信息区域
-    
-    // 清除按钮布局
+    leftLayout->addWidget(debugText);
+
     QHBoxLayout* debugButtonLayout = new QHBoxLayout();
-    debugButtonLayout->addStretch();  // 左侧添加弹性空间
+    debugButtonLayout->addStretch();
     QPushButton* cleanDebugButton = new QPushButton("Clean", this);
     cleanDebugButton->setFixedSize(80, 30);
-    debugButtonLayout->addWidget(cleanDebugButton);  // 右对齐
-    leftLayout->addLayout(debugButtonLayout);  // 添加清除按钮布局
+    debugButtonLayout->addWidget(cleanDebugButton);
+    leftLayout->addLayout(debugButtonLayout);
 
-    // 连接清除按钮信号
     connect(cleanDebugButton, &QPushButton::clicked, [=]() {
         Debug::get()->clean();
     });
 
-    // 将左侧布局添加到主布局（不设置stretch，让左侧保持紧凑）
-    mainLayout->addLayout(leftLayout, 0);  // stretch因子为0，不拉伸左侧区域
+    // 左侧整体不拉伸，保持显示区紧凑
+    mainLayout->addLayout(leftLayout, 0);
 
-    // 右侧标签页控件
+    // 右侧标签页：承载相机、采色、标定等各功能模块
     QTabWidget* myTabWidget = new QTabWidget(this);
-
-    // 设置标签页为可伸缩，充满右侧整个界面
     myTabWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    // 移除最小尺寸设置，避免遮挡左侧显示区域
-    // myTabWidget->setMinimumSize(560, 800);
 
     myTabWidget->setStyleSheet(
         "QTabBar::tab {"
-        "   height: 2em;"             // 设置逻辑高度
-        "   width: 6em;"              // 设置逻辑宽度
-        "   background: transparent;" // 强制背景保持透明
-        "   border: none;"            // 去掉可能存在的边框
+        "   height: 2em;"
+        "   width: 6em;"
+        "   background: transparent;"
+        "   border: none;"
         "}"
         "\n"
-        "QTabBar::tab:selected {"     // 选中标签加深颜色
+        "QTabBar::tab:selected {"
         "   font-weight: bold;"
         "}"
     );
 
-    // 添加标签  
     CameraDlg* cameraDlg = new CameraDlg(myTabWidget);
-    myTabWidget->addTab(cameraDlg, "Camera");      // 摄像头
+    myTabWidget->addTab(cameraDlg, "Camera");
 
     RobotDlg* robotDlg = new RobotDlg(myTabWidget);
-    myTabWidget->addTab(robotDlg, "Frequency");   // 频率
+    myTabWidget->addTab(robotDlg, "Frequency");
 
+    // 标定页与显示页相互持有引用：标定需在校正后的画面上取点，显示页需转发鼠标点击
     DemarcateDlg* demarcateDlg = new DemarcateDlg(myTabWidget);
-    demarcateDlg->setDisplayDlg(displayDlg);  // Give Demarcate access to the display
-    displayDlg->setDemarcateDlg(demarcateDlg); // Give Display access to Demarcate (for click forwarding)
-    myTabWidget->addTab(demarcateDlg, "Demarcate");   // 标定
-    m_pDemarcateDlg = demarcateDlg;  // 保存指针，用于退出时检查未保存数据
+    demarcateDlg->setDisplayDlg(displayDlg);
+    displayDlg->setDemarcateDlg(demarcateDlg);
+    myTabWidget->addTab(demarcateDlg, "Demarcate");
+    m_pDemarcateDlg = demarcateDlg;
 
     ColorDlg* colorDlg = new ColorDlg(myTabWidget);
-    myTabWidget->addTab(colorDlg, "Color");       // 采色
+    myTabWidget->addTab(colorDlg, "Color");
     m_pColorDlg = colorDlg;
-    displayDlg->setColorDlg(colorDlg);             // 让 DisplayDlg 访问实际的 ColorDlg 实例
+    displayDlg->setColorDlg(colorDlg);
 
     MatchDlg_5vs5* matchDlg = new MatchDlg_5vs5(myTabWidget);
-    matchDlg->setDisplayDlg(displayDlg);  // 设置DisplayDlg指针
-    myTabWidget->addTab(matchDlg, "competition"); // 比赛
+    matchDlg->setDisplayDlg(displayDlg);
+    myTabWidget->addTab(matchDlg, "competition");
 
-    // 连接标签页切换信号（防重入守卫）
+    // 标签页切换时切换显示页的工作模式：先停定时器再按页设定，用共享守卫避免切换中重入
     auto tabSwitching = std::make_shared<bool>(false);
     connect(myTabWidget, &QTabWidget::currentChanged, [=](int index) {
         if (*tabSwitching) return;
         *tabSwitching = true;
 
-        // 先停止所有定时器，避免冲突
         displayDlg->Stop();
 
         switch (index) {
-        case 0: // Camera标签页
+        case 0:
             displayDlg->ShowDynamic();
             break;
-        case 1: // Frequency标签页
+        case 1:
             displayDlg->ShowCarNum();
             break;
-        case 2: // Demarcate标签页
+        case 2:
             displayDlg->ShowSingle();
             break;
-        case 3: // Color标签页
+        case 3:
             displayDlg->ShowSingle();
             displayDlg->SelectSetStatus(DisplayDlg::SET_STATUS::COLOR_SET);
             break;
-        case 4: // competition标签页
+        case 4:
             displayDlg->ShowInitGame();
             break;
         }
@@ -143,21 +130,16 @@ QtWidgetDesign::QtWidgetDesign(QWidget* parent)
         *tabSwitching = false;
         });
 
-    // 将标签页添加到主布局（stretch因子为1，让右侧标签页占据剩余空间）
     mainLayout->addWidget(myTabWidget, 1);
 
-    // 初始化Debug类（debugText已在前面创建）
     Debug::get()->init(debugText);
 
-    // 创建一个中心部件来容纳主布局
     QWidget* centralWidget = new QWidget();
     centralWidget->setLayout(mainLayout);
-    centralWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);  // 中央部件自适应
-
-    // 3. 核心最后一步：调用基类提供的接口，让基类把它加到主界面布局中去
+    centralWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     this->setCentralWidget(centralWidget);
 
-    // 手动触发一次下标为0的槽函数，确保相机在软件启动时开始抓流
+    // 启动后立即进入 Camera 页，触发相机开始抓流
     emit myTabWidget->currentChanged(0);
 }
 
@@ -168,7 +150,7 @@ QtWidgetDesign::~QtWidgetDesign()
 
 void QtWidgetDesign::closeEvent(QCloseEvent* event)
 {
-    // 检查标定页面是否有未保存的数据
+    // 关闭前逐页检查未保存数据：Save 则落盘，Cancel 中止关闭，Discard 跳过继续下一页
     if (m_pDemarcateDlg && m_pDemarcateDlg->hasUnsavedData()) {
         QMessageBox::StandardButton ret = QMessageBox::question(
             this,
@@ -184,10 +166,8 @@ void QtWidgetDesign::closeEvent(QCloseEvent* event)
             event->ignore();
             return;
         }
-        // Discard：继续检查下一个
     }
 
-    // 检查采色页面是否有未保存的数据
     if (m_pColorDlg && m_pColorDlg->hasUnsavedData()) {
         QMessageBox::StandardButton ret = QMessageBox::question(
             this,
@@ -203,9 +183,7 @@ void QtWidgetDesign::closeEvent(QCloseEvent* event)
             event->ignore();
             return;
         }
-        // Discard：继续
     }
 
-    // 所有检查通过，正常关闭
     CFrameLessWidgetBase::closeEvent(event);
 }

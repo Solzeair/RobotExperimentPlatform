@@ -1,8 +1,7 @@
 /*
-* 5v5比赛对话框头文件
-* 写作人 李青
-* 功能 5v5比赛控制面板的类，包含各种比赛规则单选框、策略选择和比赛状态控制方法。
-* 策略通过插件形式实现，与标定采色接口保持一致
+* 5v5 比赛控制面板对话框
+* 提供比赛规则、策略选择与比赛流程控制；
+* 策略以插件形式接入，接口约定与标定采色一致
 */
 #pragma once
 
@@ -22,10 +21,10 @@
 #include <QProcess>
 #include <QFile>
 
-// 包含策略插件接口
+// 策略插件接口约定
 #include "StrategyPluginInterface.h"
 
-// 前向声明
+// 前向声明，避免头文件循环依赖
 class DisplayDlg;
 
 class MatchDlg_5vs5 : public QWidget
@@ -55,7 +54,7 @@ private:
     void initUI();
 
 private:
-    // --- 控件部件 ---
+    // --- UI 控件 ---
     QRadioButton* radioAttack;
     QRadioButton* radioDefend;
     QRadioButton* radioLeftArea;
@@ -78,14 +77,14 @@ private:
     QPushButton* btnStrategyParam;
     QComboBox* comboStrategy;
 
-    // --- ButtonGroup for exclusive selection ---
+    // --- 互斥单选 ButtonGroup ---
     QButtonGroup* m_danShuangGroup;      // 单双后卫
     QButtonGroup* m_kickTeamGroup;       // 开球方
     QButtonGroup* m_areaGroup;           // 左右半场
     QButtonGroup* m_dqDirectGroup;       // 点球选择
     QButtonGroup* m_goalkeeperGroup;     // 守门选择
 
-    // --- 比赛参数变量 ---
+    // --- 比赛规则与状态参数 ---
     int m_attack;
     bool m_BallLost;
     bool m_checkinfo;
@@ -101,12 +100,12 @@ private:
     int m_dan;
     int StrategyNum;
 
-    // --- 显示对话框指针 ---
+    // --- 关联的显示对话框 ---
     DisplayDlg* m_pDisplayDlg;
 
-    // ========== 策略插件接口 ==========
+    // 当前加载的策略插件实例
     StrategyPluginInterface* m_strategyPlugin;
 
-    // 比赛状态
+    // 比赛运行状态标志
     bool m_isMatchRunning;
 };

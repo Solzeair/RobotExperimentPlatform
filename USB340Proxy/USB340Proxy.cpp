@@ -9,7 +9,7 @@ USB340Proxy::USB340Proxy() : m_initialized(false) {}
 
 USB340Proxy::~USB340Proxy() {
     if (m_initialized) {
-        // 清理资源
+        // 设备已初始化时需释放其底层资源（当前为占位，预留清理入口）
     }
 }
 

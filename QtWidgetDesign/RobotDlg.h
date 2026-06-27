@@ -1,8 +1,6 @@
 /*
 * 调车对话框头文件
-* 写作人 李青
-* 功能 调车控制界面的类，包含机器人方向控制按钮、通信频率和车辆编号配置相关的属性及方法。
-* 已完成 / 未完成
+* 功能：调车控制界面，包含机器人方向控制、通信频率与车辆编号配置相关的属性及方法。
 */
 
 #pragma once
@@ -18,72 +16,74 @@
 #include <QGroupBox>
 #include <QTimer>
 
-// 常量定义
-const int ID_TIMER_SHOW_FRE = 1002; // 显示设备频率的定时器ID
-const int TIME_SPACE = 1000;        // 定时器时间间隔为1秒
+// 定时器标识与周期常量，用于周期性读取通讯模块状态
+const int ID_TIMER_SHOW_FRE = 1002; // 频率轮询定时器ID
+const int TIME_SPACE = 1000;        // 轮询周期，单位毫秒
 
 class RobotDlg : public QWidget
 {
     Q_OBJECT
 
 public:
-    RobotDlg(QWidget* parent = nullptr);  //初始化调车面板及其状态
+    RobotDlg(QWidget* parent = nullptr);  // 构造并初始化调车面板
     ~RobotDlg();
 
 protected:
-    void closeEvent(QCloseEvent* event) override;  //窗口关闭事件
+    void closeEvent(QCloseEvent* event) override;  // 关闭时清理状态并通知父窗口
 
 private slots:
-    void onButtonFront();                 //前进按钮点击
-    void onButtonBack();                  //后退按钮点击
-    void onButtonLeft();                  //向左转按钮点击
-    void onButtonRight();                 //向右转按钮点击
-    void onButtonStop();                  //停止运动按钮点击
-    void onButtonChangeNum();             //修改小车编号按钮点击
-    void onButtonChangeFreq();            //修改通信频率按钮点击
-    void onRadio1450();                   //选择小车频率为450
-    void onRadio1460();                   //选择小车频率为460
-    void onButton450();                   //选择发射器频率为450
-    void onButton460();                   //选择发射器频率为460
-    void onButtonConfirmFreq();            //确认发射器频率设置
-    void onTimer();                       //定时器回调函数
+    // 方向控制槽：分别下发前进/后退/左转/右转/停止运动指令
+    void onButtonFront();
+    void onButtonBack();
+    void onButtonLeft();
+    void onButtonRight();
+    void onButtonStop();
+    // 编号与频率配置槽
+    void onButtonChangeNum();             // 下发修改被控车编号命令
+    void onButtonChangeFreq();            // 下发修改被控车通信频率命令
+    void onRadio1450();                   // 被控车频率选为450
+    void onRadio1460();                   // 被控车频率选为460
+    void onButton450();                   // 发射器频率选为450
+    void onButton460();                   // 发射器频率选为460
+    void onButtonConfirmFreq();           // 确认并应用发射器频率设置
+    void onTimer();                       // 定时轮询通讯模块状态
 
 private:
-    void initUI();                        //UI初始化
+    void initUI();                        // 构建并组装各功能分组控件
 
 private:
-    // --- 布局部件 ---
-    QVBoxLayout* mainLayout;              //主垂直区域布局器
+    // --- 布局 ---
+    QVBoxLayout* mainLayout;              // 对话框主垂直布局，承载各功能分组
 
-    // --- 控件部件 ---
-    QLineEdit* editOldNum;                //显示旧车号的文本框
-    QLineEdit* editNewNum;                //输入新车号的文本框
-    QLineEdit* editNum;                   //输入待设置频率车号的文本框
-    QLineEdit* editDeviceStatus;          //用于反馈当前通讯模块状态的文本框
-    QPushButton* btnChangeNum;            //触发修改编号命令的功能按钮
-    QPushButton* btnChangeFreq;           //触发修改频率命令的功能按钮
-    QPushButton* btnFront;                //发出机器人向前运动指令的按钮
-    QPushButton* btnBack;                 //发出机器人向后运动指令的按钮
-    QPushButton* btnLeft;                 //发出机器人向左运动指令的按钮
-    QPushButton* btnRight;                //发出机器人向右运动指令的按钮
-    QPushButton* btnStop;                 //发出机器人终止运动指令的按钮
-    QRadioButton* radio1_450;             //选择450通讯频道的单选按钮
-    QRadioButton* radio1_460;             //选择460通讯频道的单选按钮
-    QPushButton* btn450;                  //设置发射器频率为450的按钮
-    QPushButton* btn460;                  //设置发射器频率为460的按钮
-    QPushButton* btnConfirmFreq;          //确认频率设置的按钮
-    QGroupBox* carNumGroup;               //包裹改号功能的区域
-    QGroupBox* controlGroup;              //包裹遥控移动功能的区域
-    QGroupBox* carFreqGroup;              //包裹车辆频段配置功能的区域
-    QGroupBox* deviceGroup;               //包裹系统发射器配置功能的区域
-    QTimer* timer;                        //定时器
+    // --- 控件 ---
+    QLineEdit* editOldNum;                // 展示修改前的小车编号
+    QLineEdit* editNewNum;                // 输入要配置的新小车编号
+    QLineEdit* editNum;                   // 输入待下发频段参数的被控车编号
+    QLineEdit* editDeviceStatus;          // 反馈当前通讯模块连接状态
+    QPushButton* btnChangeNum;            // 触发下发修改编号命令
+    QPushButton* btnChangeFreq;           // 触发下发修改频率命令
+    QPushButton* btnFront;                // 下发前进运动指令
+    QPushButton* btnBack;                 // 下发后退运动指令
+    QPushButton* btnLeft;                 // 下发左转运动指令
+    QPushButton* btnRight;                // 下发右转运动指令
+    QPushButton* btnStop;                 // 下发停止运动指令
+    QRadioButton* radio1_450;             // 被控车频率选择450
+    QRadioButton* radio1_460;             // 被控车频率选择460
+    QPushButton* btn450;                  // 发射器频率选择450
+    QPushButton* btn460;                  // 发射器频率选择460
+    QPushButton* btnConfirmFreq;          // 确认发射器频率设置
+    QGroupBox* carNumGroup;               // 小车编号配置区
+    QGroupBox* controlGroup;              // 遥控运动控制区
+    QGroupBox* carFreqGroup;              // 被控车频段配置区
+    QGroupBox* deviceGroup;               // 发射器频率配置区
+    QTimer* timer;                        // 通讯状态轮询定时器
 
-    // --- 数据变量 ---
-    int m_oldNum;                         //操作之前的已有小车编号数值
-    int m_newNum;                         //准备配置的目标新小车编号数值
-    int m_numSet;                         //当前等待下发频段参数的被控车编号
-    bool m_carFre;                        //表示设备选择频带状态的逻辑标志
-    int m_selectedFreq;                   //发射器频率选择状态（450或460）
-    const int speed = 20;                 //机器人运动速度
+    // --- 运行时状态 ---
+    int m_oldNum;                         // 修改前的原小车编号
+    int m_newNum;                         // 待配置的目标小车编号
+    int m_numSet;                         // 当前等待下发频段参数的被控车编号
+    bool m_carFre;                        // 被控车频段选择标志（区分450/460）
+    int m_selectedFreq;                   // 发射器频率选择状态（450或460）
+    const int speed = 20;                 // 运动指令下发的固定速度档位
     
 };

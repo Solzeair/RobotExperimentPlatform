@@ -1,21 +1,17 @@
 ﻿/*
  * DemarcateDlg.cpp  –  场地标定对话框实现
- * 作者 : 李青  (修订版)
  *
- * 更改摘要
+ * 模块职责
  * ──────────────────
- * 1. 使用真正的最小二乘求解器（带部分主元的高斯消元法）
- *    替换了原来的空壳 gmiv()。
- *    原来的 gmiv() 将所有解系数设为 0，所以从未生成过标定数据。
+ * 1. 采集 25 个控制点的像素坐标，与场地理论坐标做最小二乘拟合，
+ *    得到像素→场地坐标的多项式映射（三次二元多项式，10 个系数）。
+ *    求解采用带部分主元的高斯消元法，处理超定方程的正规方程。
  *
- * 2. 添加了透视校正功能（applyPerspectiveCorrection）。
- *    如果操作员还提供了 4 个场地角点的像素坐标，
- *    则在校值拟合之前，将原始相机画面变换为俯视矩形。
- *    这可以消除桶形/倾斜畸变，使映射更加准确。
+ * 2. 可选透视校正：若操作员提供 4 个场地角点像素坐标，在拟合前
+ *    先把相机画面变换为俯视矩形，消除桶形/倾斜畸变。
  *
- * 3. 移除了与 utili.h 冲突的重复 Ground / GroundInfo 结构体定义
- *    （flag 字段的 char vs bool 类型冲突）。
- *    utili.h 现在是唯一的权威定义。
+ * 3. 拟合结果按像素索引写入全局 ground 表，供其它模块查表获得
+ *    场地坐标及有效区域标记（flag）。
  *
  */
 
@@ -27,19 +23,18 @@
 #include <cstring>
 #include <algorithm>
 
- // OpenCV 头文件 – 仅用于透视变换
+ // OpenCV 仅用于透视校正，不参与标定拟合本身
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
 // ---------------------------------------------------------------
-// 全局地面标定表（单一定义）
+// 全局地面标定表：每个像素索引对应一个场地坐标 + 有效区域标记
 // ---------------------------------------------------------------
 Ground ground;
 
 // ---------------------------------------------------------------
-// 25 个控制点的目标场地坐标（厘米）
-// 行从上到下，列从左到右。
-// 与原始布局完全一致。
+// 25 个控制点的场地理论坐标（厘米），与场地实际布置一一对应
+// 行从上到下、列从左到右；标定质量取决于点击点与该布局的吻合度
 // ---------------------------------------------------------------
 static const double kBx[CALIB_POINT_COUNT] = {
     0, 55, 110, 165, 220,
@@ -60,7 +55,8 @@ static const double kBy[CALIB_POINT_COUNT] = {
     180, 180, 180, 180, 180
 };
 
-// 场地中心，单位为厘米（用于内部缩放坐标）
+// 场地几何中心与缩放因子：拟合在以中心为原点的缩放坐标系中进行，
+// 改善数值条件；求出系数后还原回厘米坐标
 static const double kCx = 110.0;  // 220 厘米宽度的一半
 static const double kCy = 90.0;  // 180 厘米高度的一半
 static const double kScale = 2.56; // 缩放因子（原始代码常数）
@@ -78,7 +74,7 @@ DemarcateDlg::DemarcateDlg(QWidget* parent)
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     // ── 场地边界多边形（13 个顶点，单位厘米）──────────────────
-    // 与原始版本保持不变；定义场地的有效区域。
+    // 描述场地有效区域，用于判定像素是否落在场内（标定时置 flag）
     point[0] = QPoint(0, 0);
     point[1] = QPoint(0, 70);
     point[2] = QPoint(-15, 70);
@@ -94,9 +90,7 @@ DemarcateDlg::DemarcateDlg(QWidget* parent)
     point[12] = QPoint(0, 0);
 
     // ── 结果预览图像（黑色背景）────────────────────────────────
-    // 尺寸与 onButtonShowRes() 中的俯视输出图像一致：
-    // 场地宽 250 cm × 2.4 px/cm + 20 px 边距 = 620 px
-    // 场地高 180 cm × 2.4 px/cm + 20 px 边距 = 452 px
+    // 尺寸与 onButtonShowRes() 俯视输出一致，构造时即分配以避免后续重绘抖动
     m_resultImage = QImage(620, 452, QImage::Format_RGB32);
     m_resultImage.fill(Qt::black);
 
@@ -121,14 +115,12 @@ void DemarcateDlg::initUI()
     QVBoxLayout* controlLayout = new QVBoxLayout();
     controlLayout->setSpacing(12);
 
-    // 标题标签
     QLabel* titleLabel = new QLabel("标定", this);
     titleLabel->setFont(font);
     controlLayout->addWidget(titleLabel);
     controlLayout->setAlignment(titleLabel, Qt::AlignTop);
 
-    // 结果预览区域
-    // 最小尺寸足以容纳俯视图（620×452），允许随面板拉伸放大。
+    // 结果预览区域：最小尺寸容纳俯视图，策略允许随面板拉伸放大
     resultLabel = new QLabel(this);
     resultLabel->setMinimumSize(560, 400);
     resultLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -136,15 +128,15 @@ void DemarcateDlg::initUI()
     resultLabel->setStyleSheet("QLabel { background-color: black; border: 1px solid #555555; }");
     controlLayout->addWidget(resultLabel, 0, Qt::AlignCenter);
 
-    // 进度条
+    // 进度条：以像素列扫描进度为刻度，标定/预览耗时操作时反馈
     progressBar = new QProgressBar(this);
     progressBar->setRange(0, DISPLAY_W);
     progressBar->setValue(0);
     controlLayout->addWidget(progressBar);
 
-    // 绿色状态条
+    // 状态条：红色=未标定，绿色=已标定/数据已加载
     m_statusBar = new QLabel(this);
-    m_statusBar->setStyleSheet("QLabel { background-color: #FF0000; border: 1px solid black; }");  // 初始红色
+    m_statusBar->setStyleSheet("QLabel { background-color: #FF0000; border: 1px solid black; }");
     m_statusBar->setFixedHeight(20);
     controlLayout->addWidget(m_statusBar);
 
@@ -184,7 +176,6 @@ void DemarcateDlg::initUI()
 
     controlLayout->addLayout(buttonRow2Layout);
 
-    // 显示结果按钮
     btnShowRes = new QPushButton("查看当前标定结果", this);
     btnShowRes->setFont(font);
     controlLayout->addWidget(btnShowRes, 0, Qt::AlignCenter);
@@ -193,7 +184,7 @@ void DemarcateDlg::initUI()
     mainLayout->addStretch();
     mainLayout->setAlignment(Qt::AlignTop);
 
-    // ── 初始按钮状态 ─────────────────────────────────────────
+    // ── 初始按钮状态：未采集点前"开始/撤销"均不可用
     btnSet->setEnabled(false);
     btnResetOne->setEnabled(false);
 
@@ -206,7 +197,6 @@ void DemarcateDlg::initUI()
     connect(btnFlush, SIGNAL(clicked()), this, SLOT(onButtonFlush()));
     connect(btnShowRes, SIGNAL(clicked()), this, SLOT(onButtonShowRes()));
 
-    // 添加弹性空间，使内容在垂直方向上自适应
     mainLayout->addStretch();
 }
 
@@ -219,7 +209,7 @@ void DemarcateDlg::setDisplayDlg(DisplayDlg* dlg)
     m_pDispDlg = dlg;
 }
 
-// 当 m_setStatus == BORDER_SET 时由 DisplayDlg::mousePressEvent 调用。
+// 点采集入口：DisplayDlg 在 BORDER_SET 状态下点击时回调本函数
 void DemarcateDlg::PushPoint(const QPoint& pt)
 {
     m_points.push_back(pt);
@@ -228,7 +218,7 @@ void DemarcateDlg::PushPoint(const QPoint& pt)
         btnResetOne->setEnabled(true);
     }
 
-    // 当收集完 25 个点后，启用"运行标定"按钮并关闭点采集模式。
+    // 收满 25 个点即激活标定按钮，并退出采集模式避免误点
     if (m_points.size() == CALIB_POINT_COUNT) {
         btnSet->setEnabled(true);
         if (m_pDispDlg) {
@@ -236,7 +226,6 @@ void DemarcateDlg::PushPoint(const QPoint& pt)
         }
     }
 
-    // 调试输出
     std::wstring ws = QString("pt %1 : %2, %3")
         .arg(m_points.size())
         .arg(pt.x())
@@ -246,26 +235,19 @@ void DemarcateDlg::PushPoint(const QPoint& pt)
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 多项式求解器（替换原来的空壳 gmiv）
+// 最小二乘求解器：对超定方程 A*x≈b 构造正规方程 (AᵀA)x=Aᵀb，
+// 再用带部分主元的高斯消元法求解。部分主元保证数值稳定性。
 //
-// 使用带部分主元的高斯消元法求解超定线性方程组 A * x ≈ b
-// 的正规方程 (A^T A) x = A^T b。
-//
-// 参数
-//   a   : 设计矩阵，行主序，大小 m×n（输入，会被修改）
-//   m   : 方程数（行）  = 25
-//   n   : 未知数个数（列）  = 10
-//   b   : 右侧向量，长度 m
-//   x   : 解向量，长度 n（输出）
-//
-// 成功返回 true，法方程奇异返回 false。
+//   a : 设计矩阵（行主序 m×n），输入会被原地修改
+//   b : 右侧向量（长度 m）
+//   x : 解向量（长度 n，输出）
+// 法方程奇异（点共线等）返回 false 并将 x 置零。
 // ═══════════════════════════════════════════════════════════════
 
 bool DemarcateDlg::solvePolynomial(double* a, int m, int n,
     const double* b, double* x) const
 {
-    // ── 构建正规方程：N = A^T A，rhs = A^T b ──────────────────
-    // N 为 n×n，rhs 为 n×1。
+    // ── 构建增广正规方程：N=[AᵀA | Aᵀb]，n×(n+1)
     std::vector<std::vector<double>> N(n, std::vector<double>(n + 1, 0.0));
 
     for (int i = 0; i < n; ++i) {
@@ -276,7 +258,7 @@ bool DemarcateDlg::solvePolynomial(double* a, int m, int n,
             }
             N[i][j] = sum;
         }
-        // 右侧列
+        // 右侧列 Aᵀb
         double rhs = 0.0;
         for (int k = 0; k < m; ++k) {
             rhs += a[k * n + i] * b[k];
@@ -286,7 +268,7 @@ bool DemarcateDlg::solvePolynomial(double* a, int m, int n,
 
     // ── 带部分主元的高斯消元 ───────────────────────────────────
     for (int col = 0; col < n; ++col) {
-        // 查找主元行
+        // 选列中绝对值最大者为主元
         int pivotRow = col;
         double maxVal = std::abs(N[col][col]);
         for (int row = col + 1; row < n; ++row) {
@@ -296,19 +278,16 @@ bool DemarcateDlg::solvePolynomial(double* a, int m, int n,
             }
         }
 
-        // 奇异检查
+        // 主元过小视为奇异，置零并失败返回
         if (maxVal < 1e-12) {
-            // 方程组奇异或接近奇异；将解向量置零
             for (int i = 0; i < n; ++i) x[i] = 0.0;
             return false;
         }
 
-        // 行交换
         if (pivotRow != col) {
             std::swap(N[pivotRow], N[col]);
         }
 
-        // 消元
         for (int row = col + 1; row < n; ++row) {
             double factor = N[row][col] / N[col][col];
             for (int j = col; j <= n; ++j) {
@@ -317,7 +296,7 @@ bool DemarcateDlg::solvePolynomial(double* a, int m, int n,
         }
     }
 
-    // ── 回代 ─────────────────────────────────────────────────
+    // ── 回代求解 x
     for (int i = n - 1; i >= 0; --i) {
         double sum = N[i][n];
         for (int j = i + 1; j < n; ++j) {
@@ -330,28 +309,23 @@ bool DemarcateDlg::solvePolynomial(double* a, int m, int n,
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 透视校正
-//
-// 对当前相机画面进行变换，使场地呈现为俯视矩形。
-// 需要恰好 4 个角点，按以下顺序存储在 m_perspectiveCorners 中：
-//   [0] 左上, [1] 右上, [2] 右下, [3] 左下
-//
-// 变换结果写回 m_pDispDlg 的内部位图缓冲区
-//（通过 friend/访问器模式暴露的 m_pDispSingle / m_pDispBitmap）。
-// 如果可用角点少于 4 个，函数不执行任何操作并返回 false。
+// 透视校正：用 4 个场地角点求单应矩阵，把相机画面校正为俯视矩形，
+// 结果就地写回 DisplayDlg 的位图缓冲区，使后续多项式拟合在无畸变
+// 图像上进行。
+// 角点顺序须为 [左上, 右上, 右下, 左下]；不足 4 个则跳过并返回 false。
 // ═══════════════════════════════════════════════════════════════
 
 bool DemarcateDlg::applyPerspectiveCorrection()
 {
     if (m_perspectiveCorners.size() < PERSPECTIVE_POINT_COUNT) {
-        // 角点不足 – 静默跳过校正
+        // 角点不足，静默跳过校正
         return false;
     }
     if (!m_pDispDlg) {
         return false;
     }
 
-    // 源角点（来自操作员选择的像素点）
+    // 源角点：操作员选取的场地四角像素坐标
     std::vector<cv::Point2f> src(4);
     for (int i = 0; i < 4; ++i) {
         src[i] = cv::Point2f(
@@ -359,7 +333,7 @@ bool DemarcateDlg::applyPerspectiveCorrection()
             static_cast<float>(m_perspectiveCorners[i].y()));
     }
 
-    // 目标角点（完整图像矩形）
+    // 目标角点：映射到完整图像矩形，得到无透视的俯视画面
     std::vector<cv::Point2f> dst = {
         cv::Point2f(0.f,             0.f),
         cv::Point2f(DISPLAY_W - 1.f, 0.f),
@@ -367,12 +341,11 @@ bool DemarcateDlg::applyPerspectiveCorrection()
         cv::Point2f(0.f,             DISPLAY_H - 1.f)
     };
 
-    // 计算 3×3 单应性矩阵
+    // 3×3 单应性矩阵
     cv::Mat H = cv::getPerspectiveTransform(src, dst);
 
-    // 将原始位图包装为 cv::Mat（BGR，3 通道）
-    // DisplayDlg 将像素存储为 RGB 格式的 m_pDispSingle；
-    // 对于 OpenCV 视为 BGR（对于纯几何操作通道顺序无关）。
+    // 把 DisplayDlg 的位图包装成 cv::Mat；仅做几何 warp，
+    // 通道顺序不影响结果，故按 BGR 视图复用
     unsigned char* pSrc = m_pDispDlg->getDispSingle();
     if (!pSrc) return false;
 
@@ -383,7 +356,7 @@ bool DemarcateDlg::applyPerspectiveCorrection()
         cv::Size(DISPLAY_W, DISPLAY_H),
         cv::INTER_LINEAR);
 
-    // 将校正后的图像写回 DisplayDlg 的缓冲区
+    // 校正结果就地写回，供后续标定直接使用
     std::memcpy(pSrc, dstMat.data,
         static_cast<size_t>(DISPLAY_W) * DISPLAY_H * 3);
 
@@ -411,7 +384,7 @@ void DemarcateDlg::onButtonSet()
 
     m_pDispDlg->SelectSetStatus(DisplayDlg::SET_STATUS::NONE);
 
-    // ── 步骤 1：透视校正（如果有角点可用）──────────────────────
+    // ── 步骤 1：若有角点则先做透视校正，消除镜头畸变
     if (m_perspectiveCorners.size() == PERSPECTIVE_POINT_COUNT) {
         if (!applyPerspectiveCorrection()) {
             Debug::get()->print(L"[Demarcate] Perspective correction failed "
@@ -423,18 +396,9 @@ void DemarcateDlg::onButtonSet()
     }
 
     // ── 步骤 2：构建设计矩阵 A（25 行 × 10 列）───────────────
-    // 多项式基函数（以像素 (320, 240) 为中心）：
-    //   列 0: 1
-    //   列 1: dx
-    //   列 2: dy
-    //   列 3: dx*dy
-    //   列 4: dx²
-    //   列 5: dy²
-    //   列 6: dx²·dy
-    //   列 7: dx·dy²
-    //   列 8: dx³
-    //   列 9: dy³
-    // 其中 dx = pixel_x - 320，dy = pixel_y - 240。
+    // 三次二元多项式基，以图像中心 (320,240) 为原点减均值，
+    // 改善条件数。10 个系数：1, dx, dy, dxdy, dx², dy²,
+    // dx²dy, dxdy², dx³, dy³（dx=pixel_x-320, dy=pixel_y-240）。
 
     const int M = CALIB_POINT_COUNT;   // 25 行
     const int N = 10;                  // 10 个系数列
@@ -457,18 +421,17 @@ void DemarcateDlg::onButtonSet()
         A[j * N + 9] = dy * dy * dy;
     }
 
-    // 保留副本用于 Y 求解（solvePolynomial 会修改矩阵）
+    // 矩阵会被求解器原地修改，故备份用于 Y 方程
     std::vector<double> A2(A);
 
-    // ── 步骤 3：在缩放坐标中构建右侧向量 ───────────────────────
-    // 原始代码将目标坐标缩放为：(coord - centre) * kScale
+    // ── 步骤 3：目标坐标转入缩放坐标系 (coord - 中心) * kScale
     std::vector<double> Bx(M), By(M);
     for (int i = 0; i < M; ++i) {
         Bx[i] = (kBx[i] - kCx) * kScale;
         By[i] = (kBy[i] - kCy) * kScale;
     }
 
-    // ── 步骤 4：求解 X 和 Y 的多项式系数 ──────────────────────
+    // ── 步骤 4：分别拟合 X、Y 两套多项式系数
     std::vector<double> px(N, 0.0), py(N, 0.0);
 
     bool okX = solvePolynomial(A.data(), M, N, Bx.data(), px.data());
@@ -482,7 +445,7 @@ void DemarcateDlg::onButtonSet()
         return;
     }
 
-    // ── 步骤 5：为每个像素填充地面表 ──────────────────────────
+    // ── 步骤 5：用拟合系数反算每个像素的场地坐标并填表
     progressBar->setValue(0);
 
     for (int i = 0; i < DISPLAY_W; ++i) {
@@ -504,11 +467,11 @@ void DemarcateDlg::onButtonSet()
                 + py[6] * dx * dx * dy + py[7] * dx * dy * dy
                 + py[8] * dx * dx * dx + py[9] * dy * dy * dy;
 
-            // 从缩放坐标转换回厘米
+            // 还原缩放坐标到厘米
             ground.groundInfo[i][j].x = static_cast<float>(fx / kScale + kCx);
             ground.groundInfo[i][j].y = static_cast<float>(fy / kScale + kCy);
 
-            // 边界测试：该像素是否在场地多边形内？
+            // 用场地多边形判定像素是否有效，写入 flag
             QPolygon polygon;
             for (int k = 0; k < 13; ++k) {
                 polygon << point[k];
@@ -522,7 +485,7 @@ void DemarcateDlg::onButtonSet()
         }
 
         progressBar->setValue(i);
-        // 在扫描过程中保持 UI 响应
+        // 逐列让出事件循环，避免长循环冻结界面
         QCoreApplication::processEvents();
     }
     m_statusBar->setStyleSheet(
@@ -543,7 +506,7 @@ void DemarcateDlg::onButtonResetOne()
 {
     if (!m_points.isEmpty()) {
         m_points.pop_back();
-        // Keep the marker overlay in sync
+        // 同步刷新画面上的十字标记覆盖层
         if (m_pDispDlg) m_pDispDlg->clearCalibPoints();
         for (const QPoint& p : m_points)
             if (m_pDispDlg) m_pDispDlg->addCalibPoint(p);
@@ -555,7 +518,7 @@ void DemarcateDlg::onButtonResetOne()
     }
 
     if (m_pDispDlg) {
-        m_pDispDlg->ShowSingle(); // redraws with updated marker list
+        m_pDispDlg->ShowSingle();
     }
 
     Debug::get()->print(L"[Demarcate] Last point removed.");
@@ -568,21 +531,21 @@ void DemarcateDlg::onButtonResetOne()
 void DemarcateDlg::onButtonReset()
 {
     if (m_pDispDlg) {
-        m_pDispDlg->clearCalibPoints(); // remove all red cross markers
+        m_pDispDlg->clearCalibPoints();
         m_pDispDlg->SelectSetStatus(DisplayDlg::SET_STATUS::BORDER_SET);
-        m_pDispDlg->ShowSingle();       // refresh display without markers
+        m_pDispDlg->ShowSingle();
     }
 
     m_points.clear();
     m_perspectiveCorners.clear();
     progressBar->setValue(0);
     m_statusBar->setStyleSheet(
-        "QLabel { background-color: #FF0000; border: 1px solid black; }");  // 重置为红色
+        "QLabel { background-color: #FF0000; border: 1px solid black; }");
     btnSet->setEnabled(false);
     btnResetOne->setEnabled(false);
 
     m_resultImage.fill(Qt::black);
-    resultLabel->setPixmap(QPixmap::fromImage(m_resultImage)); // clear preview
+    resultLabel->setPixmap(QPixmap::fromImage(m_resultImage));
     update();
 
     Debug::get()->print(L"[Demarcate] Reset. Click 25 field points to recalibrate.");
@@ -594,7 +557,7 @@ void DemarcateDlg::onButtonReset()
 
 void DemarcateDlg::onButtonLoad()
 {
-    // 如果标定数据将被丢弃则发出警告
+    // 未保存数据将被覆盖，先确认
     if (!m_isSaved) {
         int ret = QMessageBox::question(
             this, "Field Calibration",
@@ -610,14 +573,14 @@ void DemarcateDlg::onButtonLoad()
         m_needResetDC = true;
         m_isSaved = true;
 
-        // 更新状态条为绿色，表示标定数据已加载
+        // 状态条转绿，表示已有可用标定数据
         m_statusBar->setStyleSheet(
             "QLabel { background-color: #00FF00; border: 1px solid black; }");
 
         Debug::get()->print(L"[Demarcate] ground.dat loaded successfully.");
     }
     else {
-        // 首次运行时不是错误 – 文件尚不存在
+        // 首次运行文件尚不存在属正常情况，非错误
         Debug::get()->print(L"[Demarcate] ground.dat not found "
             L"(will be created after first calibration).");
     }
@@ -648,7 +611,7 @@ bool DemarcateDlg::saveCalibration()
 void DemarcateDlg::onButtonSave()
 {
     if (saveCalibration()) {
-        // 保存成功后清除图像上的 25 个红色十字标记，并刷新显示
+        // 保存成功后清除画面标记并刷新，提示用户标定已固化
         if (m_pDispDlg) {
             m_pDispDlg->clearCalibPoints();
             m_pDispDlg->ShowSingle();
@@ -676,17 +639,15 @@ void DemarcateDlg::onButtonFlush()
 void DemarcateDlg::onButtonShowRes()
 {
     if (!m_needResetDC && !m_resultImage.isNull()) {
-        // 已是最新，只需刷新 pixmap（例如控件被重绘后）
+        // 数据未变化，仅按控件尺寸刷新 pixmap（如窗口缩放后）
         resultLabel->setPixmap(QPixmap::fromImage(m_resultImage)
             .scaled(resultLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
         return;
     }
 
     // ════════════════════════════════════════════════════════════
-    // 输出图像坐标系（俯视场地坐标系）
-    //   场地 X：-15 ~ 235 cm（含左右边线延伸区，总宽 250 cm）
-    //   场地 Y：  0 ~ 180 cm（总高 180 cm）
-    //   缩放  ：2.4 px/cm；四周各留 10 px 边距
+    // 俯视输出图像坐标系：场地 cm 经 2.4 px/cm 缩放，四周留 10 px 边距
+    //   X: -15~235 cm（含左右边线延伸），Y: 0~180 cm
     // ════════════════════════════════════════════════════════════
     const double kPxPerCm = 2.4;
     const int    kPadding = 10;
@@ -697,7 +658,7 @@ void DemarcateDlg::onButtonShowRes()
     const int kImgW = static_cast<int>((kFieldXMax - kFieldXMin) * kPxPerCm) + 2 * kPadding;
     const int kImgH = static_cast<int>((kFieldYMax - kFieldYMin) * kPxPerCm) + 2 * kPadding;
 
-    // 场地原点 (0 cm, 0 cm) 在输出图像中的像素偏移
+    // 场地原点 (0,0)cm 在输出图像中的像素偏移
     const int kOffX = static_cast<int>(-kFieldXMin * kPxPerCm) + kPadding;
     const int kOffY = kPadding;
 
@@ -711,21 +672,16 @@ void DemarcateDlg::onButtonShowRes()
 
     if (pCam) {
         // ════════════════════════════════════════════════════════
-        // 模式 A：摄像头图像重投影（前向映射）
-        //
-        // 对每个 flag=1 的摄像头像素 (i, j)：
-        //   - 读取 ground 表中对应的场地坐标 (fx, fy)（单位 cm）
-        //   - 将 (fx, fy) 映射为输出图像像素坐标
-        //   - 用 2×2 色块填充，减少前向映射留下的空洞
-        //
-        // 结果为俯视展开的真实摄像头纹理，直观反映标定质量。
+        // 模式 A：摄像头图像前向重投影。
+        // 对每个 flag=1 像素，查表得到场地坐标后映射到输出图像，
+        // 用 2×2 色块填补以减少前向映射的空洞，得到真实俯视纹理。
         // ════════════════════════════════════════════════════════
         for (int i = 0; i < DISPLAY_W; ++i) {
             for (int j = 0; j < DISPLAY_H; ++j) {
                 if (!ground.groundInfo[i][j].flag) continue;
 
-                float fx = ground.groundInfo[i][j].x;  // cm
-                float fy = ground.groundInfo[i][j].y;  // cm
+                float fx = ground.groundInfo[i][j].x;
+                float fy = ground.groundInfo[i][j].y;
                 int outX = static_cast<int>(fx * kPxPerCm) + kOffX;
                 int outY = static_cast<int>(fy * kPxPerCm) + kOffY;
 
@@ -736,7 +692,7 @@ void DemarcateDlg::onButtonShowRes()
                 int srcIdx = (j * DISPLAY_W + i) * 3;
                 QRgb color = qRgb(pCam[srcIdx], pCam[srcIdx + 1], pCam[srcIdx + 2]);
 
-                // 2×2 色块填充，减少空洞
+                // 2×2 色块填充，缓解前向映射空洞
                 m_resultImage.setPixel(outX, outY, color);
                 m_resultImage.setPixel(outX + 1, outY, color);
                 m_resultImage.setPixel(outX, outY + 1, color);
@@ -748,8 +704,7 @@ void DemarcateDlg::onButtonShowRes()
     }
     else {
         // ════════════════════════════════════════════════════════
-        // 模式 B：无摄像头帧（后备显示）
-        // 将 flag=1 的像素绘制为绿点，展示有效标定区域
+        // 模式 B：无摄像头帧时以绿点描绘有效标定区域作为后备显示
         // ════════════════════════════════════════════════════════
         QPainter painter(&m_resultImage);
         painter.setPen(QColor(0, 200, 0));
@@ -768,7 +723,7 @@ void DemarcateDlg::onButtonShowRes()
         }
     }
 
-    // ── 叠加场地边界多边形（白色，2 px 线宽）────────────────
+    // ── 叠加场地边界多边形（白线），便于核对有效区域
     {
         QPainter painter(&m_resultImage);
         painter.setRenderHint(QPainter::Antialiasing);
@@ -782,7 +737,7 @@ void DemarcateDlg::onButtonShowRes()
         painter.drawPolyline(polygon);
     }
 
-    // ── 叠加 25 个标定控制点理论位置（黄色十字，6 px 臂长）─
+    // ── 叠加 25 个控制点理论位置（黄色十字），用于比对重投影偏差
     {
         QPainter painter(&m_resultImage);
         painter.setPen(QPen(Qt::yellow, 1));

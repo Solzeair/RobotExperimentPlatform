@@ -1,5 +1,5 @@
 ﻿#pragma once
-//utili.h	包含一些常用的宏定义
+//utili.h	全局常量与公共结构体定义
 
 //客户区的大小
 #define CLIENT_H        700
@@ -18,8 +18,6 @@
 #define CONTROL_H       CLIENT_H
 //机器人数量
 #define MAX_ROBOT_NUM   5
-//机器人编号
-// 一些公用的结构体
 
 // 地面标定数据结构
 //
@@ -42,14 +40,7 @@ typedef struct tagGround {//场地参数结构体，用于记录场地的各种�
 }Ground;
 
 // ---------------------------------------------------------------
-
-// 标定模板文件名
-
-// ---------------------------------------------------------------
-
-// Ground 结构体的二进制文件 – 由
-// DemarcateDlg::onButtonSave / onButtonLoad 生成和消费。
-
+// 标定数据文件：由 DemarcateDlg::onButtonSave / onButtonLoad 生成与读取
 inline constexpr const char* kGroundDataFile = "ground.dat";
 
 // 透视校正 – 4 个角点控制点

@@ -1,23 +1,11 @@
 ﻿/*
- * DemarcateDlg.h  –  场地标定对话框
- * 作者 : 李青  (修订版)
+ * DemarcateDlg – 场地标定对话框
  *
- * 与原版的主要区别
- * ────────────────────────
- * 1. 移除了重复的 Ground / GroundInfo 结构体定义。
- *    唯一的权威定义现在位于 utili.h。
- *
- * 2. 真正的多项式求解器
- *    gmiv() 现在包含正确的最小二乘/SVD 实现
- *    （带部分主元的高斯消元法），因此标定计算
- *    实际上可以产生正确的坐标系数。
- *
- * 3. 透视校正
- *    在运行多项式拟合之前，使用四点透视变换
- *    （OpenCV getPerspectiveTransform + warpPerspective）
- *    将原始相机画面校正为俯视矩形。
- *    校正后的画面存储回 DisplayDlg 的位图缓冲区，
- *    以便所有下游处理都能看到校正后的图像。
+ * 设计目标：将相机像素坐标映射为场地坐标。
+ * 处理流程为先做四点透视校正（俯视矩形化），
+ * 再用 25 个控制点求解 10 系数多项式。
+ * Ground/GroundInfo 的权威定义统一收敛在 utili.h，
+ * 此处仅负责采集点、驱动计算与持久化。
  */
 
 #pragma once
@@ -39,25 +27,18 @@
 #include <QVector>
 #include <QDataStream>
 
-#include "utili.h"          // Ground / GroundInfo / 文件名常量
+#include "utili.h"          // 场地结构体与文件名常量的唯一权威定义
 
- // 前向声明 – 避免与 DisplayDlg.h 循环包含
+ // 前向声明，切断与 DisplayDlg 的循环包含依赖
 class DisplayDlg;
 
-// ---------------------------------------------------------------
-// 全局地面标定表
-// （extern 声明 – 定义在 DemarcateDlg.cpp 中）
-// ---------------------------------------------------------------
+// 全局地面标定表，extern 声明（定义在 DemarcateDlg.cpp），供全局共享标定结果
 extern Ground ground;
 
-// ---------------------------------------------------------------
-// 多项式拟合中使用的场地控制点数量
-// ---------------------------------------------------------------
+// 多项式拟合的控制点数，需与场地标定点位设计一致
 static const int CALIB_POINT_COUNT = 25;
 
-// ---------------------------------------------------------------
-// 模板中保存的透视角点数量
-// ---------------------------------------------------------------
+// 透视校正使用的源角点数，固定为矩形四角
 static const int PERSPECTIVE_POINT_COUNT = 4;
 
 class DemarcateDlg : public QWidget
@@ -68,54 +49,47 @@ public:
     explicit DemarcateDlg(QWidget* parent = nullptr);
     ~DemarcateDlg();
 
-    // 当对话框处于点采集模式时，由 DisplayDlg 在用户点击图像内部时调用。
+    // 采集模式下由 DisplayDlg 在用户点击图像时回调，逐点收集控制点
     void PushPoint(const QPoint& pt);
 
-    // 注入 DisplayDlg 指针，以便调用 ShowSingle()、
-    // SelectSetStatus() 以及读写位图缓冲区。
+    // 注入 DisplayDlg，用于复用其显示、状态切换与位图缓冲区
     void setDisplayDlg(DisplayDlg* dlg);
 
-    // 检查是否有未保存的标定数据（用于退出时提示）
+    // 退出前判断是否有未保存标定数据，触发提示
     bool hasUnsavedData() const { return !m_isSaved; }
-    // 保存标定数据并返回是否成功
+    // 持久化标定数据，返回是否写入成功
     bool saveCalibration();
 
 private slots:
-    // 按钮处理函数（UI 未变）
-    void onButtonSet();         // 使用当前点运行标定
-    void onButtonResetOne();    // 移除最后收集的点
-    void onButtonReset();        // 放弃所有点，重新进入采集模式
-    void onButtonLoad();        // 从磁盘加载 ground.dat
-    void onButtonSave();        // 将 ground.dat 保存到磁盘
-    void onButtonFlush();       // 刷新显示画面
-    void onButtonShowRes();     // 渲染标定结果预览
+    void onButtonSet();         // 基于已采集点运行标定计算
+    void onButtonResetOne();    // 撤销最近一个控制点
+    void onButtonReset();        // 清空全部点并回到采集模式
+    void onButtonLoad();        // 从 ground.dat 读回历史标定
+    void onButtonSave();        // 将当前标定写入 ground.dat
+    void onButtonFlush();       // 刷新画面显示
+    void onButtonShowRes();     // 渲染并预览标定结果
 
 private:
     // ── UI ──────────────────────────────────────────────────────
     void initUI();
-    // paintEvent removed: result preview is now set via resultLabel->setPixmap()
-    // inside onButtonShowRes(), which is the correct Qt pattern for QLabel display.
+    // 结果预览不再走 paintEvent，改为在 onButtonShowRes() 中通过
+    // resultLabel->setPixmap() 设置，符合 QLabel 的标准显示方式。
 
     // ── 标定计算 ───────────────────────────────────────────────
-    // 使用 25 个控制点对求解将像素坐标映射到场地坐标的
-    // 10 系数多项式。
-    // a[m*n] = 设计矩阵（m=25 行，n=10 列）
-    // b[m]   = 右侧向量（目标 X 或 Y，缩放单位）
-    // x[n]   = 解系数（输出）
-    // 如果方程组奇异/病态则返回 false。
+    // 最小二乘求解像素到场地坐标的 10 系数多项式映射：
+    // a[m*n] 为设计矩阵（m=25 行，n=10 列），b[m] 为目标向量（缩放后的 X 或 Y），
+    // x[n] 输出解系数。方程组奇异或病态时返回 false。
     bool solvePolynomial(double* a, int m, int n,
         const double* b, double* x) const;
 
     // ── 透视校正 ───────────────────────────────────────────────
-    // 对 DisplayDlg 中的当前画面应用四点透视变换，
-    // 将其校正为 DISPLAY_W × DISPLAY_H 的矩形。
-    // 四个源角点必须按以下顺序存储在 m_perspectiveCorners 中：
-    // 左上、右上、右下、左下。
+    // 对当前画面做四点透视变换并校正为 DISPLAY_W × DISPLAY_H 的俯视矩形。
+    // m_perspectiveCorners 须按 左上、右上、右下、左下 顺序存放源角点，
     // 成功返回 true。
     bool applyPerspectiveCorrection();
 
 private:
-    // 状态指示条（红 = 未完成标定，绿 = 已完成）
+    // 状态指示条：红表示未完成标定，绿表示已完成
     QLabel* m_statusBar;
     // ── 布局/控件 ──────────────────────────────────────────────
     QVBoxLayout* mainLayout;
@@ -130,15 +104,15 @@ private:
     QPushButton* btnShowRes;
 
     // ── 状态 ───────────────────────────────────────────────────
-    bool           m_isSaved;       // ground.dat 已写入
-    bool           m_needResetDC;   // 结果预览需要刷新
+    bool           m_isSaved;       // 标定数据是否已写入磁盘
+    bool           m_needResetDC;   // 结果预览是否需要重绘
 
     // ── 数据 ────────────────────────────────────────────────────
-    QVector<QPoint> m_points;            // 25 个像素控制点（已点击）
-    QVector<QPoint> m_perspectiveCorners;// 用于变换的 4 个角点（可选）
+    QVector<QPoint> m_points;            // 已点击的像素控制点
+    QVector<QPoint> m_perspectiveCorners;// 透视变换的源角点（可选）
     DisplayDlg* m_pDispDlg;
-    QImage          m_resultImage;       // 在 paintEvent 中渲染的结果预览
+    QImage          m_resultImage;       // 结果预览位图，由 onButtonShowRes 渲染
 
-    // 场地边界多边形（13 个顶点，单位厘米）
+    // 场地边界多边形，13 个顶点，单位为厘米
     QPoint          point[13];
 };

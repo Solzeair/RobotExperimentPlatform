@@ -1,6 +1,5 @@
 /*
-* 插件管理器实现文件
-* 功能 实现插件的加载、调用和释放逻辑
+* 插件管理器实现：负责动态插件的加载、调用与释放，单例管理
 */
 #include "PluginManager.h"
 #include "DisplayDlg.h"
@@ -27,12 +26,11 @@ PluginManager::~PluginManager()
 
 bool PluginManager::loadPlugin(const QString& pluginPath, PluginType type)
 {
-    // 如果已加载该类型的插件，先释放
+    // 同一类型仅保留一个插件，加载新插件前需清空已有实例，避免资源泄漏
     if (m_libraries.contains(type)) {
         releaseAllPlugins();
     }
     
-    // 加载插件库
     QLibrary* library = new QLibrary(pluginPath);
     if (!library->load()) {
         qDebug() << "Failed to load plugin:" << library->errorString();
@@ -40,7 +38,7 @@ bool PluginManager::loadPlugin(const QString& pluginPath, PluginType type)
         return false;
     }
     
-    // 解析插件创建函数
+    // 插件必须导出名为 createPlugin 的工厂函数，作为动态库与宿主的统一入口约定
     CreatePluginFunc createFunc = reinterpret_cast<CreatePluginFunc>(library->resolve("createPlugin"));
     if (!createFunc) {
         qDebug() << "Failed to resolve createPlugin function";
@@ -49,7 +47,6 @@ bool PluginManager::loadPlugin(const QString& pluginPath, PluginType type)
         return false;
     }
     
-    // 创建插件实例
     PluginInterface* plugin = createFunc();
     if (!plugin) {
         qDebug() << "Failed to create plugin instance";
@@ -58,7 +55,6 @@ bool PluginManager::loadPlugin(const QString& pluginPath, PluginType type)
         return false;
     }
     
-    // 初始化插件
     if (!plugin->initialize()) {
         qDebug() << "Failed to initialize plugin";
         delete plugin;
@@ -67,7 +63,7 @@ bool PluginManager::loadPlugin(const QString& pluginPath, PluginType type)
         return false;
     }
     
-    // 保存插件和库
+    // 同时持有插件实例与动态库句柄，确保释放时能成对卸载
     m_libraries[type] = library;
     m_plugins[type] = plugin;
     

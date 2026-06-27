@@ -1,16 +1,15 @@
 /*
-* 策略插件接口定义文件
-* 功能 定义策略插件的统一接口，与标定采色插件保持一致
+* 策略插件接口定义
+* 定义宿主与策略插件间的统一契约，结构对标标定采色插件，支持策略以可插拔方式接入
 */
 #pragma once
 
 #include "PluginInterface.h"
 #include <QString>
 
-// 前向声明
 class DisplayDlg;
 
-// 数据结构定义（与原策略接口保持一致）
+// 策略交互所用的基础数据结构，字段含义与原策略接口对齐以保证跨插件兼容
 struct Point {
     double x, y;
     Point(double x = 0, double y = 0) : x(x), y(y) {}
@@ -39,56 +38,49 @@ struct WheelVelocity {
     WheelVelocity(double l = 0, double r = 0) : left(l), right(r) {}
 };
 
-// 策略插件接口类 - 继承通用插件接口
+// 策略插件契约：在通用插件接口基础上扩展比赛场景配置与策略调度方法
 class StrategyPluginInterface : public PluginInterface
 {
 public:
     virtual ~StrategyPluginInterface() {}
-    
+
     // ======== 继承自 PluginInterface ========
-    // 获取插件名称（已在基类声明）
-    // 获取插件类型（已在基类声明）
-    // 创建插件界面（已在基类声明）
-    // 设置DisplayDlg指针（已在基类声明）
-    // 初始化插件（已在基类声明，无参数版本）
-    // 释放插件资源（已在基类声明）
-    
+    // 名称/类型查询、界面创建、DisplayDlg 绑定、初始化、资源释放等通用能力由基类提供
+
     // ======== 策略插件特有方法 ========
-    
-    // 带参数的初始化方法（策略插件专用）
+
+    // 比赛开始前按参数完成策略内部初始化
     virtual void initialize(int param) = 0;
-    
-    // 设置参数
+
+    // 运行期读写可调参数，使策略行为可在不重编译的前提下动态调整
     virtual void setParameter(const char* name, double value) = 0;
-    
-    // 获取参数
+
     virtual double getParameter(const char* name) = 0;
-    
+
     // 设置阵型类型
     virtual void setFormationType(int type) = 0;
-    
+
     // 设置球门方向
     virtual void setOurGoalOnRight(bool isRight) = 0;
-    
+
     // 设置开球方
     virtual void setOurKickoff(bool isOurKickoff) = 0;
-    
+
     // 设置开球类型
     virtual void setKickoffType(int type) = 0;
-    
+
     // 设置点球模式
     virtual void setPenaltyKickMode(int direct, int mode) = 0;
-    
+
     // 选择策略
     virtual void selectStrategy(int strategyNum) = 0;
-    
+
     // 机器人归位
     virtual void parkRobots() = 0;
-    
-    // 保存配置
+
+    // 配置持久化，保存/恢复策略运行所需的参数与阵型设定
     virtual bool saveConfig(const char* path) = 0;
-    
-    // 加载配置
+
     virtual bool loadConfig(const char* path) = 0;
 };
 

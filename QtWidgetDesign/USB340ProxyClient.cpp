@@ -24,27 +24,23 @@ USB340ProxyClient* USB340ProxyClient::getInstance() {
 QStringList USB340ProxyClient::getPossibleProxyPaths() {
     QStringList paths;
 
-    // 1. 主程序所在目录
+    // 代理 USB340Proxy 是独立进程，部署位置随构建/安装环境而异，此处按优先级枚举所有候选路径
     QString appPath = QCoreApplication::applicationDirPath();
     paths << appPath + "/USB340Proxy.exe";
 
-    // 2. 项目源文件目录
     QString projectDir = QDir(appPath).absoluteFilePath("../../USB340Proxy");
     paths << projectDir + "/USB340Proxy.exe";
 
-    // 3. x64/Debug 目录
     QString debugPath = QDir(appPath).absoluteFilePath("../x64/Debug/USB340Proxy.exe");
     paths << debugPath;
 
-    // 4. x64/Release 目录
     QString releasePath = QDir(appPath).absoluteFilePath("../x64/Release/USB340Proxy.exe");
     paths << releasePath;
 
-    // 5. Win32/Debug 目录（代理是32位）
+    // 代理本身为 32 位程序，Win32 构建目录需单独覆盖
     QString win32DebugPath = QDir(appPath).absoluteFilePath("../Win32/Debug/USB340Proxy.exe");
     paths << win32DebugPath;
 
-    // 6. Win32/Release 目录（代理是32位）
     QString win32ReleasePath = QDir(appPath).absoluteFilePath("../Win32/Release/USB340Proxy.exe");
     paths << win32ReleasePath;
 
@@ -59,7 +55,7 @@ bool USB340ProxyClient::init() {
     QStringList paths = getPossibleProxyPaths();
     QString foundPath;
 
-    // 查找存在的代理程序
+    // 按优先级探测首个实际存在的代理程序路径
     for (const QString& path : paths) {
         QFileInfo fileInfo(path);
         if (fileInfo.exists() && fileInfo.isFile()) {
@@ -93,6 +89,7 @@ bool USB340ProxyClient::init() {
         return false;
     }
 
+    // 代理启动成功后会输出 "READY" 作为握手信号，收到才视为可用
     QString response = QString::fromUtf8(m_process->readAllStandardOutput()).trimmed();
     m_ready = (response == "READY");
     return m_ready;
@@ -103,6 +100,7 @@ bool USB340ProxyClient::sendCommand(const QString& cmd, QString& response) {
         return false;
     }
 
+    // 单一进程句柄被多线程复用，加锁保证一次请求-响应的读写不被交错打断
     QMutexLocker locker(&m_mutex);
 
     m_process->write(cmd.toUtf8() + "\n");

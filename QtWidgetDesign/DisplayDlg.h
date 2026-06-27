@@ -13,19 +13,12 @@
 #include <vector>
 #include <algorithm>
 /*
-* DisplayDlg.h - 显示对话框头文件
-*
-* 功能：
-* 1. 定义显示对话框的接口和功能
-* 2. 管理左侧显示区域的图像显示
-* 3. 处理相机图像的获取和显示
-* 4. 实现帧率计算和显示
-* 5. 支持用户交互和状态管理
-* 6. 实现目标识别和图像处理
-* 7. 支持足球比赛场景的显示
+* DisplayDlg - 相机画面显示与目标识别对话框
+* 负责抓帧显示、颜色采样、场地标定与机器人/球识别，
+* 覆盖实时显示、动态测试与比赛等运行状态。
 */
 
-// CMovingAvg模板类 - 用于计算移动平均
+// CMovingAvg：定长滑动窗口求均值，平滑抖动较大的实时测量（如帧率）
 template <class T, unsigned int span = 20>
 class CMovingAvg
 {
@@ -71,7 +64,7 @@ private:
 // RGB -> H 转换表（DisplayDlg.cpp 定义，供 ColorDlg 采样使用）
 extern int HLUT[256][256][256];
 
-// 常量定义
+// 显示分辨率与目标标识常量（可用宏在编译期覆盖默认值）
 #ifndef DISPLAY_W
 static const int DISPLAY_W = 640;
 #endif
@@ -83,7 +76,7 @@ static const int MAX_ROBOT_NUM = 5;
 #endif
 static const int BALL = 0; // Object type identifier for the ball
 
-// 机器人信息结构体
+// 视觉识别得到的机器人位姿（场地坐标 + 编号 + 是否检测到）
 typedef struct {
     double x;
     double y;
@@ -92,7 +85,7 @@ typedef struct {
     bool found;
 } RobotInford;
 
-// 对手信息结构体
+// 对手机器人位姿（无需朝向，故省略 theta）
 typedef struct {
     double x;
     double y;
@@ -102,30 +95,16 @@ typedef struct {
 // ========================================================================
 // OverlayWidget - 透明覆盖层控件
 // ========================================================================
-// 功能说明：
-//   此类是一个透明的 QWidget，叠在 displayLabel（摄像头画面）上方，
-//   专门用于在采色模式（COLOR_SET）下绘制鼠标框选的红框矩形。
+// 叠在 displayLabel 上方，专门在采色模式（COLOR_SET）下绘制鼠标框选红框。
 //
-// 设计动机（对比 MFC 版本）：
-//   MFC 中使用 CDC::SetROP2(R2_NOTXORPEN) 直接在屏幕 DC 上以 XOR
-//   模式画红框，矩形和摄像头画面在同一个像素层，互不干扰。
-//   Qt 中若在 QLabel 上直接用 QPainter 画矩形，会被 setPixmap()
-//   设置的图像覆盖（QLabel 绘制顺序：先画 pixmap，后画控件内容）。
-//   因此引入独立的透明覆盖层，将"图像显示"和"框选绘制"分离到
-//   两个独立的控件层，达到与 MFC XOR 模式相同的效果：
-//   - displayLabel 只负责显示摄像头画面，不被框选操作污染
-//   - OverlayWidget 只负责画红框，不影响底层图像数据
+// 设计动机：MFC 用 SetROP2(R2_NOTXORPEN) 在屏幕 DC 上以 XOR 模式画框，
+// 框与画面同层互不干扰；Qt 中 QLabel 先绘 pixmap 再绘控件内容，直接在其上
+// 画框会被图像覆盖。故引入独立透明层，将"图像显示"与"框选绘制"分离：
+// displayLabel 只显示画面，OverlayWidget 只画红框，互不污染。
 //
-// 工作流程：
-//   1. 用户切换到"采色"标签页 → SelectSetStatus(COLOR_SET)
-//      → 显示覆盖层并启用鼠标追踪
-//   2. 用户在覆盖层上按下鼠标 → 记录框选起点
-//   3. 用户拖动鼠标 → 实时更新矩形范围，通过 update() 触发重绘
-//   4. paintEvent 中用 XOR 组合模式绘制红色矩形线框
-//   5. ColorDlg::onZoom() 通过 DisplayDlg::GetRect() 获取框选矩形
-//      → 从原始帧缓冲 m_pDispSingle 中裁切放大区域
-//   6. 用户切换到其他标签页 → SelectSetStatus(NONE)
-//      → 隐藏覆盖层
+// 流程：SelectSetStatus(COLOR_SET) 显示覆盖层 → 鼠标拖动框选并 update() 重绘
+// → paintEvent 以 XOR 模式画红框 → ColorDlg::onZoom() 经 GetRect() 取框
+// → 从 m_pDispSingle 裁切放大；切走标签页时 SelectSetStatus(NONE) 隐藏。
 // ========================================================================
 class OverlayWidget : public QWidget
 {
@@ -145,16 +124,14 @@ public:
     bool hasSelection() const { return m_hasSelection; }
 
 protected:
-    // 重绘事件：用 XOR 模式绘制红色矩形线框
-    // 每次调用 update() 时自动触发，先清除旧矩形再画新矩形
+    // 重绘事件：以 XOR 模式绘制红色框选线框，重绘即自动擦旧画新
     void paintEvent(QPaintEvent* event) override;
 
     // 鼠标按下：记录框选起点，初始化一个 1×1 的矩形
     void mousePressEvent(QMouseEvent* event) override;
 
-    // 鼠标拖动：更新矩形终点，调用 update() 触发重绘
-    // 由于 paintEvent 每次从干净状态重画 XOR 矩形，
-    // 视觉效果等同于 MFC 的"擦旧画新"两步操作
+    // 鼠标拖动：更新矩形终点并 update() 重绘；paintEvent 每次从干净状态重画，
+    // 故单次重绘即达 MFC"擦旧画新"两步的视觉效果
     void mouseMoveEvent(QMouseEvent* event) override;
 
 private:
@@ -282,7 +259,7 @@ private:
     // 图像
     QSize m_ImageSize;
     unsigned char* m_pDispBitmap, * m_pDispSingle;
-    unsigned char* m_pIdentify; // image data pointer
+    unsigned char* m_pIdentify;
 
     // Pointer to the calibration dialog; set via setDemarcateDlg().
     // When m_setStatus == BORDER_SET mouse clicks are forwarded here.
@@ -329,7 +306,7 @@ private:
     OppInf m_TargetN, m_TargetN1, m_TargetN2;
     OppInf OpprobotInforTem[20];    //临时存储对手信息
 
-    // 栈操作
+    // 泛洪填充（区域生长）显式栈：用定长数组+指针替代递归，规避爆栈
     static const int StackSize = 200;
     int stackx[StackSize];
     int stacky[StackSize];

@@ -1,15 +1,13 @@
 /*
 * 调车对话框源文件
-* 写作人 李青
-* 功能 调车面板的构建与基础交互响应，含车体位置标识显示、指令下发遥测操作等功能模块实现。
-* 已完成
+* 调车面板的构建与基础交互响应，含车体位置标识显示、指令下发遥测操作等功能模块实现。
 */
 #include "RobotDlg.h"
 #include "Debug.h"
 #include "USB340ProxyClient.h"
 #include <QCloseEvent>
 
-// 使用450频率
+// 通过宏选择工作频率，当前默认 450
 #define USE_FRE_450
 
 RobotDlg::RobotDlg(QWidget *parent)
@@ -20,13 +18,13 @@ RobotDlg::RobotDlg(QWidget *parent)
     , m_carFre(true)
     , m_selectedFreq(450)
 {
-    // 初始化USB340代理客户端
+    // 初始化USB340硬件代理，失败仅告警不阻断界面启动
     USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     if (!proxy->init()) {
         Debug::get()->print(L"USB340代理初始化失败");
     }
     
-    // 设置初始频率
+    // 根据宏切换发射器初始频率并同步车体频率标志
 #ifdef USE_FRE_450 
     m_carFre = true;
     proxy->setFre(450, false);
@@ -35,7 +33,7 @@ RobotDlg::RobotDlg(QWidget *parent)
     proxy->setFre(460, false);
 #endif
     
-    // 设置大小策略为可伸缩
+    // 面板随父容器伸缩，适配不同窗口尺寸
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     
     initUI();
@@ -46,27 +44,25 @@ RobotDlg::~RobotDlg()
 
 void RobotDlg::initUI()
 {
-    // 设置字体为楷体，12号，加粗
+    // 全局字体统一为楷体加粗，保证面板视觉一致
     QFont font("楷体", 12, QFont::Bold);
     setFont(font);
     
-    // 创建主布局（与其他界面保持一致）
+    // 主布局统一定义外边距与行距，与其它界面风格对齐
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(20, 0, 20, 20);
     mainLayout->setSpacing(15);
     
-    // 创建控制区域（与其他界面保持一致）
+    // 控制区域聚合各功能分组，独立布局以便统一管理间距
     QVBoxLayout *controlLayout = new QVBoxLayout();
-    // 设置控件之间间隔为12像素，让内容排列更松散
     controlLayout->setSpacing(12);
     
-    // 标题 "调车"
     QLabel *titleLabel = new QLabel("调车", this);
     titleLabel->setFont(font);
     controlLayout->addWidget(titleLabel);
     controlLayout->setAlignment(titleLabel, Qt::AlignTop);
     
-    // 车号设置
+    // 车号设置分组：原车号录入、新车号录入与改号触发
     QGroupBox *carNumGroup = new QGroupBox("车号设置", this);
     carNumGroup->setFont(font);
     
@@ -103,9 +99,9 @@ void RobotDlg::initUI()
     carNumLayout->addWidget(btnChangeNum, 0, Qt::AlignCenter);
     
     controlLayout->addWidget(carNumGroup);
-    controlLayout->addSpacing(38); // 添加1厘米的间隔
+    controlLayout->addSpacing(38); // 分组之间预留约1cm视觉间隔
     
-    // 控制
+    // 运动控制分组：上下前后与停止按钮，构成方向操纵十字布局
     QGroupBox *controlGroup = new QGroupBox("控制", this);
     controlGroup->setFont(font);
     
@@ -134,9 +130,9 @@ void RobotDlg::initUI()
     controlButtonsLayout->addWidget(btnBack, 0, Qt::AlignCenter);
     
     controlLayout->addWidget(controlGroup);
-    controlLayout->addSpacing(38); // 添加1厘米的间隔
+    controlLayout->addSpacing(38); // 分组之间预留约1cm视觉间隔
     
-    // 小车频率设置
+    // 小车频率设置分组：按车号切换 450/460 载波频率
     QGroupBox *carFreqGroup = new QGroupBox("小车频率设置", this);
     carFreqGroup->setFont(font);
     
@@ -166,9 +162,9 @@ void RobotDlg::initUI()
     carFreqLayout->addWidget(btnChangeFreq);
     
     controlLayout->addWidget(carFreqGroup);
-    controlLayout->addSpacing(38); // 添加1厘米的间隔
+    controlLayout->addSpacing(38); // 分组之间预留约1cm视觉间隔
     
-    // 发射器设置
+    // 发射器设置分组：选择发射器载波频率并显示连接状态
     QGroupBox *deviceGroup = new QGroupBox("发射器设置", this);
     deviceGroup->setFont(font);
 
@@ -208,15 +204,15 @@ void RobotDlg::initUI()
 
     controlLayout->addWidget(deviceGroup);
 
-    // 将控制区域添加到主布局（与其他界面保持一致）
+    // 控制区域整体并入主布局
     mainLayout->addLayout(controlLayout);
 
-    // 初始化定时器
+    // 定时轮询设备连接状态；默认未启动，需要时取消下方死代码注释
     timer = new QTimer(this);
     connect(timer, SIGNAL(timeout()), this, SLOT(onTimer()));
     // timer->start(TIME_SPACE); // 暂时注释掉，需要时取消注释
 
-    // 连接信号槽
+    // 绑定各按钮与频率单选的信号槽至对应处理槽
     connect(btnFront, SIGNAL(clicked()), this, SLOT(onButtonFront()));
     connect(btnBack, SIGNAL(clicked()), this, SLOT(onButtonBack()));
     connect(btnLeft, SIGNAL(clicked()), this, SLOT(onButtonLeft()));
@@ -230,19 +226,20 @@ void RobotDlg::initUI()
     connect(radio1_450, SIGNAL(clicked()), this, SLOT(onRadio1450()));
     connect(radio1_460, SIGNAL(clicked()), this, SLOT(onRadio1460()));
 
-    // 设置按钮状态
+    // 按当前车体频率标志同步发射器按钮选中态
     btn450->setChecked(true);
     if(m_carFre)
         btn450->setChecked(true);
     else
         btn460->setChecked(true);
 
-    // 添加弹性空间，使内容在垂直方向上自适应
+    // 末尾弹性占位，使内容顶部对齐、垂直方向自适应拉伸
     mainLayout->addStretch();
 }
 
 void RobotDlg::onButtonFront()
 {
+    // 车号0表示广播：下发全队(11辆)同速前进，否则仅驱动指定单车
     USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_oldNum = editOldNum->text().toInt();
     proxy->buildCarSpeed(m_oldNum, speed, speed, 100);
@@ -255,6 +252,7 @@ void RobotDlg::onButtonFront()
 
 void RobotDlg::onButtonBack()
 {
+    // 两侧轮速取负实现后退；车号0为广播
     USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_oldNum = editOldNum->text().toInt();
     proxy->buildCarSpeed(m_oldNum, -speed, -speed, 100);
@@ -266,6 +264,7 @@ void RobotDlg::onButtonBack()
 }
 void RobotDlg::onButtonLeft()
 {
+    // 左右轮反向驱动实现原地左转
     USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_oldNum = editOldNum->text().toInt();
     proxy->buildCarSpeed(m_oldNum, -speed, speed, 100);
@@ -278,6 +277,7 @@ void RobotDlg::onButtonLeft()
 
 void RobotDlg::onButtonRight()
 {
+    // 左右轮反向驱动实现原地右转
     USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_oldNum = editOldNum->text().toInt();
     proxy->buildCarSpeed(m_oldNum, speed, -speed, 100);
@@ -290,6 +290,7 @@ void RobotDlg::onButtonRight()
 
 void RobotDlg::onButtonStop()
 {
+    // 两侧轮速归零实现急停
     USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_oldNum = editOldNum->text().toInt();
     proxy->buildCarSpeed(m_oldNum, 0, 0, 100);
@@ -310,15 +311,15 @@ void RobotDlg::onButtonChangeNum()
     if (!success) {
         Debug::get()->print(QString("改车号命令发送失败"));
     }
-    // 交换编号显示
+    // 改号成功后回填输入框并交换内部编号，便于连续改号操作
     editOldNum->setText(QString::number(m_newNum));
     editNewNum->setText(QString::number(m_oldNum));
-    // 交换变量值
     std::swap(m_oldNum, m_newNum);
 }
 
 void RobotDlg::onButtonChangeFreq()
 {
+    // 修改指定车号的载波频率，调用前重新init确保代理处于就绪态
     USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     m_numSet = editNum->text().toInt();
     m_carFre = radio1_450->isChecked();
@@ -347,6 +348,7 @@ void RobotDlg::onRadio1460()
 
 void RobotDlg::onButton450()
 {
+    // 仅暂存选中频率并刷新按钮选中态，实际切换待点击确定
     m_selectedFreq = 450;
     btn450->setChecked(true);
     btn460->setChecked(false);
@@ -355,6 +357,7 @@ void RobotDlg::onButton450()
 
 void RobotDlg::onButton460()
 {
+    // 仅暂存选中频率并刷新按钮选中态，实际切换待点击确定
     m_selectedFreq = 460;
     btn450->setChecked(false);
     btn460->setChecked(true);
@@ -363,6 +366,7 @@ void RobotDlg::onButton460()
 
 void RobotDlg::onButtonConfirmFreq()
 {
+    // 确认后真正下发发射器频率并同步车体频率标志与状态显示
     USB340ProxyClient* proxy = USB340ProxyClient::getInstance();
     if (m_selectedFreq == 450)
     {
@@ -396,6 +400,7 @@ void RobotDlg::onTimer()
 
 void RobotDlg::closeEvent(QCloseEvent* event)
 {
+    // 关闭前停止定时器，避免对话框销毁后槽函数触发空指针访问
     if (timer)
     {
         timer->stop();

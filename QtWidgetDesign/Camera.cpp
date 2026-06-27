@@ -5,7 +5,6 @@
 #include "Debug.h"
 #include <algorithm>
 
-// 显示尺寸常量
 const int DISPLAY_W = 640;
 const int DISPLAY_H = 480;
 
@@ -14,7 +13,7 @@ const int DISPLAY_H = 480;
 * 
 * 功能：
 * 1. 实现相机的打开、关闭、开始/停止抓取
-* 2. 管理相机参数（亮度、增益、对比度、快门、RGB通道）
+* 2. 管理相机参数（黑电平、增益、伽马、快门、RGB白平衡通道）
 * 3. 从配置文件读取和保存相机参数
 * 4. 使用Basler Pylon SDK实现实际相机图像捕获
 * 5. 提供图像数据转换功能
@@ -50,6 +49,7 @@ Camera::~Camera()
     Close();
 }
 
+// 利用静态成员 gc 的析构在程序退出时释放单例，确保相机句柄等资源被可靠回收
 Camera::GarbageCollector::~GarbageCollector()
 {
     if (nullptr != Camera::_pCamera)
@@ -369,10 +369,9 @@ void Camera::WriteConfig()
 */
 bool Camera::Open()
 {
-    // 测试摄像头是否能正常运行
+    // 调试快捷方式：取消下面两行注释可跳过真实硬件连接，便于无相机环境下调试UI
     // Debug::get()->print(L"[Debug模式] 假装摄像头已打开，跳过真实硬件连接...");
     // return true;
-    // 以下为正常注释
     if (IsOpen())
         Close();
     try
@@ -383,6 +382,7 @@ bool Camera::Open()
         CTlFactory::GetInstance().ReleaseTl(pTl);
         m_camera.RegisterConfiguration(this, RegistrationMode_ReplaceAll, Cleanup_None);
         m_camera.Open();
+        // 配置抓图缓冲池：限制队列深度以控制内存占用，并优先保留最新帧
         m_camera.MaxNumQueuedBuffer = 10;
         m_camera.MaxNumBuffer = 20;
         m_camera.OutputQueueSize = 10;
@@ -392,6 +392,7 @@ bool Camera::Open()
         m_camera.OffsetX = 0;
         m_camera.OffsetY = 0;
 
+        // 关闭硬件触发采用连续自由抓取；曝光设为手动定时，曝光时间由 Shutter 参数控制
         m_camera.TriggerSelector = TriggerSelector_FrameStart;
         m_camera.TriggerMode = TriggerMode_Off;
         m_camera.TriggerSelector = TriggerSelector_FrameBurstStart;
@@ -557,7 +558,7 @@ void Camera::Close()
 //        return false;
 //    }
 //}
-// 在文件顶部确保包含了格式转换的头文件（通常已被 PylonIncludes.h 包含，保险起见可以确认一下）
+// 提供 CImageFormatConverter，下方抓图结果经它转换为 RGB 输出
 #include <pylon/ImageFormatConverter.h>
 
 bool Camera::RetrieveResult(void* ptrResult)
@@ -567,17 +568,17 @@ bool Camera::RetrieveResult(void* ptrResult)
     try
     {
         CGrabResultPtr ptrGrabResult;
-        // 建议把超时时间改宽容一点，比如 1000ms
+        // 取帧超时设为 1000ms，留足帧到达余量，避免偶发丢帧
         if (m_camera.RetrieveResult(1000, ptrGrabResult, TimeoutHandling_Return))
         {
             if (ptrGrabResult->GrabSucceeded())
             {
-                // 🔥 扔掉旧的 ConvertBitmap，使用 Pylon 官方的高性能转换器
+                // 改用 Pylon 官方转换器替代手写 ConvertBitmap，保证色彩还原正确且性能更优
                 Pylon::CImageFormatConverter converter;
                 converter.OutputPixelFormat = Pylon::PixelType_RGB8packed;
                 converter.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
 
-                // 这一步会自动处理任何 Bayer/Mono/YUV 格式，直接输出完美的 RGB 存入 pBuffer
+                // 自动识别 Bayer/Mono/YUV 等输入格式并统一输出 RGB8packed，输出缓冲区需不少于 W*H*3 字节
                 converter.Convert(ptrResult, DISPLAY_W * DISPLAY_H * 3, ptrGrabResult);
 
                 return true;
@@ -676,7 +677,8 @@ void Camera::ProcessGBLines(unsigned char* pDest, const unsigned char* pSource, 
     const unsigned char* pEnd;
     while (pRaw < pLastLine)
     {
-        pEnd = pRaw + width - 2;  // 跳过最后一列
+        // 内层只处理到倒数第二列，最后一列单独处理以统一边界访问
+        pEnd = pRaw + width - 2;
         while (pRaw < pEnd)
         {
             // GREENPIXEL_B
@@ -693,13 +695,13 @@ void Camera::ProcessGBLines(unsigned char* pDest, const unsigned char* pSource, 
             pRGB += 3;
             pRaw++;
         }
-        // 处理最后一个像素
+        // 行末残余像素单独插值，保证该行不被跳过
         pRGB[2] = m_pLutB[*(pRaw + 1)];
         pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
         pRGB[0] = m_pLutR[*(pRaw + width)];
         pRGB += 3;
         pRaw++;
-        
+
         pRaw += width + 1;
         pRGB -= (3 * width - 1);
     }
@@ -721,7 +723,8 @@ void Camera::ProcessRGLines(unsigned char* pDest, const unsigned char* pSource, 
     const unsigned char* pEnd;
     while (pRaw < pLastLine)
     {
-        pEnd = pRaw + width - 2;  // 跳过最后一列
+        // 内层只处理到倒数第二列，最后一列单独处理以统一边界访问
+        pEnd = pRaw + width - 2;
         while (pRaw < pEnd)
         {
             // REDPIXEL
@@ -738,13 +741,13 @@ void Camera::ProcessRGLines(unsigned char* pDest, const unsigned char* pSource, 
             pRGB += 3;
             pRaw++;
         }
-        // 处理最后一个像素
+        // 行末残余像素单独插值，保证该行不被跳过
         pRGB[2] = m_pLutB[*(pRaw + width + 1)];
         pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
         pRGB[0] = m_pLutR[*pRaw];
         pRGB += 3;
         pRaw++;
-        
+
         pRaw += width + 1;
         pRGB -= (3 * width - 1);
     }
@@ -766,7 +769,8 @@ void Camera::ProcessBGLines(unsigned char* pDest, const unsigned char* pSource, 
     const unsigned char* pEnd;
     while (pRaw < pLastLine)
     {
-        pEnd = pRaw + width - 2;  // 跳过最后一列
+        // 内层只处理到倒数第二列，最后一列单独处理以统一边界访问
+        pEnd = pRaw + width - 2;
         while (pRaw < pEnd)
         {
             // BLUEPIXEL
@@ -775,7 +779,7 @@ void Camera::ProcessBGLines(unsigned char* pDest, const unsigned char* pSource, 
             pRGB[0] = m_pLutR[*(pRaw + width + 1)];
             pRGB += 3;
             pRaw++;
-            
+
             // GREENPIXEL_B
             pRGB[2] = m_pLutB[*(pRaw + 1)];
             pRGB[1] = m_pLutG[*pRaw];
@@ -783,7 +787,7 @@ void Camera::ProcessBGLines(unsigned char* pDest, const unsigned char* pSource, 
             pRGB += 3;
             pRaw++;
         }
-        // 处理最后一个像素
+        // 行末残余像素单独插值，保证该行不被跳过
         pRGB[2] = m_pLutB[*pRaw];
         pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
         pRGB[0] = m_pLutR[*(pRaw + width + 1)];
@@ -811,7 +815,8 @@ void Camera::ProcessGRLines(unsigned char* pDest, const unsigned char* pSource, 
     const unsigned char* pEnd;
     while (pRaw < pLastLine)
     {
-        pEnd = pRaw + width - 2;  // 跳过最后一列
+        // 内层只处理到倒数第二列，最后一列单独处理以统一边界访问
+        pEnd = pRaw + width - 2;
         while (pRaw < pEnd)
         {
             // GREENPIXEL_R
@@ -820,7 +825,7 @@ void Camera::ProcessGRLines(unsigned char* pDest, const unsigned char* pSource, 
             pRGB[0] = m_pLutR[*(pRaw + 1)];
             pRGB += 3;
             pRaw++;
-            
+
             // REDPIXEL
             pRGB[2] = m_pLutB[*(pRaw + width + 1)];
             pRGB[1] = m_pLutG[(BYTE)((*(pRaw + 1) + *(pRaw + width)) >> 1)];
@@ -828,7 +833,7 @@ void Camera::ProcessGRLines(unsigned char* pDest, const unsigned char* pSource, 
             pRGB += 3;
             pRaw++;
         }
-        // 处理最后一个像素
+        // 行末残余像素单独插值，保证该行不被跳过
         pRGB[2] = m_pLutB[*(pRaw + width)];
         pRGB[1] = m_pLutG[*pRaw];
         pRGB[0] = m_pLutR[*(pRaw + 1)];
@@ -847,6 +852,7 @@ void Camera::ProcessGRLines(unsigned char* pDest, const unsigned char* pSource, 
 * @param width - 图像宽度
 * @param height - 图像高度
 */
+// 手写 Bayer 去马赛克实现（旧路径）。当前 RetrieveResult/GrabOne 已改用 Pylon 官方转换器，本函数仅作保留
 void Camera::ConvertBitmap(unsigned char* pDest, unsigned char* pSource, int width, int height)
 {
     enum PatternOrigin_t
@@ -857,7 +863,8 @@ void Camera::ConvertBitmap(unsigned char* pDest, unsigned char* pSource, int wid
         poR
     };
     
-    PatternOrigin_t PatternOrigin = poB; // BGGR格式
+    // 当前传感器 Bayer 起始排列固定为 BGGR，切换枚举即可适配不同传感器
+    PatternOrigin_t PatternOrigin = poB;
 
     switch (PatternOrigin)
     {
@@ -879,16 +886,14 @@ void Camera::ConvertBitmap(unsigned char* pDest, unsigned char* pSource, int wid
         break;
     }
 
-    // 处理边界：擦除目标图像的最右列和最后一行
+    // 边界处理：每行末列与最后一行因缺邻域无法插值，清零以避免显示杂色边缘
     unsigned char* pRGB = pDest;
-    // 设置最右列为零
     for (int i = 0; i < height; i++)
     {
         pRGB[(i + 1) * width * 3 - 3] = 0;
         pRGB[(i + 1) * width * 3 - 2] = 0;
         pRGB[(i + 1) * width * 3 - 1] = 0;
     }
-    // 设置最后一行为零
     for (int i = 0; i < width; i++)
     {
         pRGB[i * 3] = 0;

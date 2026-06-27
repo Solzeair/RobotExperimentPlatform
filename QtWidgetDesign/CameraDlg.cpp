@@ -1,8 +1,7 @@
 /*
-* 摄像头调整对话框文件
-* 写作人 李青
-* 功能 摄像头调整界面设计，包含亮度、增益、对比度、快门、红色、绿色、蓝色等参数的滑块和输入框，以及保存按钮。
-* 已完成 
+* 摄像头调整对话框
+* 提供亮度、增益、对比度、快门及 RGB 白平衡通道的滑块与输入框调节，
+* 调节实时下发相机并支持参数持久化保存。
 */
 
 #include "CameraDlg.h"
@@ -15,12 +14,12 @@
 #include <QElapsedTimer>
 #include <QSpacerItem>
 
-// 使用项目中已有的Camera类
+// 复用项目内的单例 Camera 进行相机参数读写
 
 CameraDlg::CameraDlg(QWidget *parent)
     : QWidget(parent)
 {
-    // 初始化数据
+    // 各参数的滑块整型值与显示浮点值，初始置零以防未连接相机时访问野值
     slideBlackLevel = 0;
     slideGain = 0;
     slideGamma = 0;
@@ -37,12 +36,12 @@ CameraDlg::CameraDlg(QWidget *parent)
     green = 0.0;
     blue = 0.0;
     
-    // 初始化相机实例
+    // 相机句柄延迟到 initUI 中获取，构造期保持空
     _pCamera = nullptr;
-    
-    // 设置大小策略为可伸缩
+
+    // 对话框随父窗口伸缩，避免固定尺寸在小屏被裁切
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    
+
     initUI();
 }
 
@@ -51,24 +50,23 @@ CameraDlg::~CameraDlg()
 
 void CameraDlg::initUI()
 {
-    // 设置字体为楷体，12pt，加粗
+    // 统一楷体 12pt 加粗，与平台其他对话框视觉风格一致
     QFont font("楷体", 12, QFont::Bold);
     setFont(font);
-    
-    // 创建主布局
+
+    // 自顶向下的单列垂直布局，所有参数行顺序堆叠
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(20, 0, 20, 20);
     mainLayout->setSpacing(15);
-    
-    // 标题 "摄像头调整"
+
     QLabel *titleLabel = new QLabel("摄像头调整", this);
     titleLabel->setFont(font);
     mainLayout->addWidget(titleLabel);
-    
-    // 获取相机实例并读取初始参数
+
+    // 取相机单例并读取当前参数作为滑块初值，保证界面与硬件一致
     _pCamera = Camera::GetInstance();
     if (_pCamera) {
-        // 从相机获取初始参数值
+        // 相机底层以放大 1000 倍的整数表示，读取后还原为浮点用于显示
         slideBlackLevel = _pCamera->GetBlackLevel();
         slideGain = _pCamera->GetGain();
         slideGamma = _pCamera->GetGamma();
@@ -76,8 +74,8 @@ void CameraDlg::initUI()
         slideRed = _pCamera->GetRed();
         slideGreen = _pCamera->GetGreen();
         slideBlue = _pCamera->GetBlue();
-        
-        // 转换为显示值
+
+        // 除快门外其余参数均按 /1000 还原为浮点显示值
         blackLevel = slideBlackLevel / 1000.0;
         gain = slideGain / 1000.0;
         gamma = slideGamma / 1000.0;
@@ -87,8 +85,7 @@ void CameraDlg::initUI()
         blue = slideBlue / 1000.0;
     }
     
-    // 亮度参数组
-    // 最小值和最大值标签在滚轴上方，中间放置标题
+    // 亮度（BlackLevel）参数组：范围标签 + 滑块 + 数值输入框三段式布局
     QHBoxLayout *blackLevelRangeLayout = new QHBoxLayout();
     QLabel *lblMinBlackLevel = new QLabel("0.0", this);
     lblMinBlackLevel->setFont(font);
@@ -101,29 +98,27 @@ void CameraDlg::initUI()
     blackLevelRangeLayout->addWidget(lblBlackLevelTitle);
     blackLevelRangeLayout->addStretch();
     blackLevelRangeLayout->addWidget(lblMaxBlackLevel);
-    blackLevelRangeLayout->addSpacing(114); // 添加114像素的空间，将最大值标签向左移动约3厘米
+    // 末尾占位与右侧 60px 输入框对齐，使最大值标签落在滑块可视末端
+    blackLevelRangeLayout->addSpacing(114);
     mainLayout->addLayout(blackLevelRangeLayout);
-    
-    // 滚轴和标签
+
     QHBoxLayout *blackLevelSliderLayout = new QHBoxLayout();
     sliderBlackLevel = new QSlider(Qt::Horizontal, this);
     sliderBlackLevel->setRange(0, 15984);
     sliderBlackLevel->setValue(slideBlackLevel);
-    sliderBlackLevel->setMinimumWidth(200); // 设置最小宽度
+    sliderBlackLevel->setMinimumWidth(200);
     editBlackLevel = new QLineEdit(this);
     editBlackLevel->setText(QString::number(blackLevel, 'f', 3));
     editBlackLevel->setFont(font);
     editBlackLevel->setFixedWidth(60);
-    
+
     blackLevelSliderLayout->addWidget(sliderBlackLevel);
     blackLevelSliderLayout->addWidget(editBlackLevel);
     mainLayout->addLayout(blackLevelSliderLayout);
-    
-    // 添加间距
+
     mainLayout->addSpacing(30);
     
-    // 增益参数组
-    // 最小值和最大值标签在滚轴上方，中间放置标题
+    // 增益（Gain）参数组
     QHBoxLayout *gainRangeLayout = new QHBoxLayout();
     QLabel *lblMinGain = new QLabel("0.0", this);
     lblMinGain->setFont(font);
@@ -136,29 +131,27 @@ void CameraDlg::initUI()
     gainRangeLayout->addWidget(lblGainTitle);
     gainRangeLayout->addStretch();
     gainRangeLayout->addWidget(lblMaxGain);
-    gainRangeLayout->addSpacing(114); // 添加114像素的空间，将最大值标签向左移动约3厘米
+    // 末尾占位与右侧 60px 输入框对齐，使最大值标签落在滑块可视末端
+    gainRangeLayout->addSpacing(114);
     mainLayout->addLayout(gainRangeLayout);
-    
-    // 滚轴和标签
+
     QHBoxLayout *gainSliderLayout = new QHBoxLayout();
     sliderGain = new QSlider(Qt::Horizontal, this);
     sliderGain->setRange(0, 29900);
     sliderGain->setValue(slideGain);
-    sliderGain->setMinimumWidth(200); // 设置最小宽度
+    sliderGain->setMinimumWidth(200);
     editGain = new QLineEdit(this);
     editGain->setText(QString::number(gain, 'f', 3));
     editGain->setFont(font);
     editGain->setFixedWidth(60);
-    
+
     gainSliderLayout->addWidget(sliderGain);
     gainSliderLayout->addWidget(editGain);
     mainLayout->addLayout(gainSliderLayout);
-    
-    // 添加间距
+
     mainLayout->addSpacing(30);
     
-    // 对比度参数组
-    // 最小值和最大值标签在滚轴上方，中间放置标题
+    // 对比度（Gamma）参数组
     QHBoxLayout *gammaRangeLayout = new QHBoxLayout();
     QLabel *lblMinGamma = new QLabel("0.0", this);
     lblMinGamma->setFont(font);
@@ -171,29 +164,27 @@ void CameraDlg::initUI()
     gammaRangeLayout->addWidget(lblGammaTitle);
     gammaRangeLayout->addStretch();
     gammaRangeLayout->addWidget(lblMaxGamma);
-    gammaRangeLayout->addSpacing(114); // 添加114像素的空间，将最大值标签向左移动约3厘米
+    // 末尾占位与右侧 60px 输入框对齐，使最大值标签落在滑块可视末端
+    gammaRangeLayout->addSpacing(114);
     mainLayout->addLayout(gammaRangeLayout);
-    
-    // 滚轴和标签
+
     QHBoxLayout *gammaSliderLayout = new QHBoxLayout();
     sliderGamma = new QSlider(Qt::Horizontal, this);
     sliderGamma->setRange(0, 3999);
     sliderGamma->setValue(slideGamma);
-    sliderGamma->setMinimumWidth(200); // 设置最小宽度
+    sliderGamma->setMinimumWidth(200);
     editGamma = new QLineEdit(this);
     editGamma->setText(QString::number(gamma, 'f', 3));
     editGamma->setFont(font);
     editGamma->setFixedWidth(60);
-    
+
     gammaSliderLayout->addWidget(sliderGamma);
     gammaSliderLayout->addWidget(editGamma);
     mainLayout->addLayout(gammaSliderLayout);
-    
-    // 添加间距
+
     mainLayout->addSpacing(30);
     
-    // 快门参数组
-    // 最小值和最大值标签在滚轴上方，中间放置标题
+    // 快门（Shutter）参数组，下限 17 为相机硬件最小曝光行数限制
     QHBoxLayout *shutterRangeLayout = new QHBoxLayout();
     QLabel *lblMinShutter = new QLabel("0.0", this);
     lblMinShutter->setFont(font);
@@ -206,29 +197,27 @@ void CameraDlg::initUI()
     shutterRangeLayout->addWidget(lblShutterTitle);
     shutterRangeLayout->addStretch();
     shutterRangeLayout->addWidget(lblMaxShutter);
-    shutterRangeLayout->addSpacing(114); // 添加114像素的空间，将最大值标签向左移动约3厘米
+    // 末尾占位与右侧 60px 输入框对齐，使最大值标签落在滑块可视末端
+    shutterRangeLayout->addSpacing(114);
     mainLayout->addLayout(shutterRangeLayout);
-    
-    // 滚轴和标签
+
     QHBoxLayout *shutterSliderLayout = new QHBoxLayout();
     sliderShutter = new QSlider(Qt::Horizontal, this);
     sliderShutter->setRange(17, 100000);
     sliderShutter->setValue(slideShutter);
-    sliderShutter->setMinimumWidth(200); // 设置最小宽度
+    sliderShutter->setMinimumWidth(200);
     editShutter = new QLineEdit(this);
     editShutter->setText(QString::number(shutter));
     editShutter->setFont(font);
     editShutter->setFixedWidth(60);
-    
+
     shutterSliderLayout->addWidget(sliderShutter);
     shutterSliderLayout->addWidget(editShutter);
     mainLayout->addLayout(shutterSliderLayout);
-    
-    // 添加间距
+
     mainLayout->addSpacing(30);
     
-    // 红色参数组
-    // 最小值和最大值标签在滚轴上方，中间放置标题
+    // 红色通道（白平衡）参数组
     QHBoxLayout *redRangeLayout = new QHBoxLayout();
     QLabel *lblMinRed = new QLabel("0.0", this);
     lblMinRed->setFont(font);
@@ -241,29 +230,27 @@ void CameraDlg::initUI()
     redRangeLayout->addWidget(lblRedTitle);
     redRangeLayout->addStretch();
     redRangeLayout->addWidget(lblMaxRed);
-    redRangeLayout->addSpacing(114); // 添加114像素的空间，将最大值标签向左移动约3厘米
+    // 末尾占位与右侧 60px 输入框对齐，使最大值标签落在滑块可视末端
+    redRangeLayout->addSpacing(114);
     mainLayout->addLayout(redRangeLayout);
-    
-    // 滚轴和标签
+
     QHBoxLayout *redSliderLayout = new QHBoxLayout();
     sliderRed = new QSlider(Qt::Horizontal, this);
     sliderRed->setRange(0, 15999);
     sliderRed->setValue(slideRed);
-    sliderRed->setMinimumWidth(200); // 设置最小宽度
+    sliderRed->setMinimumWidth(200);
     editRed = new QLineEdit(this);
     editRed->setText(QString::number(red, 'f', 3));
     editRed->setFont(font);
     editRed->setFixedWidth(60);
-    
+
     redSliderLayout->addWidget(sliderRed);
     redSliderLayout->addWidget(editRed);
     mainLayout->addLayout(redSliderLayout);
-    
-    // 添加间距
+
     mainLayout->addSpacing(30);
     
-    // 绿色参数组
-    // 最小值和最大值标签在滚轴上方，中间放置标题
+    // 绿色通道（白平衡）参数组
     QHBoxLayout *greenRangeLayout = new QHBoxLayout();
     QLabel *lblMinGreen = new QLabel("0.0", this);
     lblMinGreen->setFont(font);
@@ -276,29 +263,27 @@ void CameraDlg::initUI()
     greenRangeLayout->addWidget(lblGreenTitle);
     greenRangeLayout->addStretch();
     greenRangeLayout->addWidget(lblMaxGreen);
-    greenRangeLayout->addSpacing(114); // 添加114像素的空间，将最大值标签向左移动约3厘米
+    // 末尾占位与右侧 60px 输入框对齐，使最大值标签落在滑块可视末端
+    greenRangeLayout->addSpacing(114);
     mainLayout->addLayout(greenRangeLayout);
-    
-    // 滚轴和标签
+
     QHBoxLayout *greenSliderLayout = new QHBoxLayout();
     sliderGreen = new QSlider(Qt::Horizontal, this);
     sliderGreen->setRange(0, 15999);
     sliderGreen->setValue(slideGreen);
-    sliderGreen->setMinimumWidth(200); // 设置最小宽度
+    sliderGreen->setMinimumWidth(200);
     editGreen = new QLineEdit(this);
     editGreen->setText(QString::number(green, 'f', 3));
     editGreen->setFont(font);
     editGreen->setFixedWidth(60);
-    
+
     greenSliderLayout->addWidget(sliderGreen);
     greenSliderLayout->addWidget(editGreen);
     mainLayout->addLayout(greenSliderLayout);
-    
-    // 添加间距
+
     mainLayout->addSpacing(30);
     
-    // 蓝色参数组
-    // 最小值和最大值标签在滚轴上方，中间放置标题
+    // 蓝色通道（白平衡）参数组
     QHBoxLayout *blueRangeLayout = new QHBoxLayout();
     QLabel *lblMinBlue = new QLabel("0.0", this);
     lblMinBlue->setFont(font);
@@ -311,36 +296,34 @@ void CameraDlg::initUI()
     blueRangeLayout->addWidget(lblBlueTitle);
     blueRangeLayout->addStretch();
     blueRangeLayout->addWidget(lblMaxBlue);
-    blueRangeLayout->addSpacing(114); // 添加114像素的空间，将最大值标签向左移动约3厘米
+    // 末尾占位与右侧 60px 输入框对齐，使最大值标签落在滑块可视末端
+    blueRangeLayout->addSpacing(114);
     mainLayout->addLayout(blueRangeLayout);
-    
-    // 滚轴和标签
+
     QHBoxLayout *blueSliderLayout = new QHBoxLayout();
     sliderBlue = new QSlider(Qt::Horizontal, this);
     sliderBlue->setRange(0, 15999);
     sliderBlue->setValue(slideBlue);
-    sliderBlue->setMinimumWidth(200); // 设置最小宽度
+    sliderBlue->setMinimumWidth(200);
     editBlue = new QLineEdit(this);
     editBlue->setText(QString::number(blue, 'f', 3));
     editBlue->setFont(font);
     editBlue->setFixedWidth(60);
-    
+
     blueSliderLayout->addWidget(sliderBlue);
     blueSliderLayout->addWidget(editBlue);
     mainLayout->addLayout(blueSliderLayout);
-    
-    // 添加间距
+
     mainLayout->addSpacing(30);
     
-    // 保存按钮
     btnSaveCamera = new QPushButton("保存设置", this);
     btnSaveCamera->setFont(font);
     mainLayout->addWidget(btnSaveCamera, 0, Qt::AlignCenter);
-    
-    // 添加弹性空间，使内容在垂直方向上自适应
+
+    // 末尾弹性空间，保证内容顶部对齐、对话框拉伸时按钮不跟随上浮
     mainLayout->addStretch();
-    
-    // 连接信号槽
+
+    // 滑块拖动实时下发相机，无需手动确认
     connect(sliderBlackLevel, SIGNAL(valueChanged(int)), this, SLOT(onSliderBlackLevelChanged(int)));
     connect(sliderGain, SIGNAL(valueChanged(int)), this, SLOT(onSliderGainChanged(int)));
     connect(sliderGamma, SIGNAL(valueChanged(int)), this, SLOT(onSliderGammaChanged(int)));
@@ -349,8 +332,8 @@ void CameraDlg::initUI()
     connect(sliderGreen, SIGNAL(valueChanged(int)), this, SLOT(onSliderGreenChanged(int)));
     connect(sliderBlue, SIGNAL(valueChanged(int)), this, SLOT(onSliderBlueChanged(int)));
     connect(btnSaveCamera, SIGNAL(clicked()), this, SLOT(onSaveCamera()));
-    
-    // 连接编辑框回车事件
+
+    // 各输入框共用一个回车槽，提交时统一回写滑块与相机
     connect(editBlackLevel, SIGNAL(returnPressed()), this, SLOT(onEditReturnPressed()));
     connect(editGain, SIGNAL(returnPressed()), this, SLOT(onEditReturnPressed()));
     connect(editGamma, SIGNAL(returnPressed()), this, SLOT(onEditReturnPressed()));
@@ -358,8 +341,8 @@ void CameraDlg::initUI()
     connect(editRed, SIGNAL(returnPressed()), this, SLOT(onEditReturnPressed()));
     connect(editGreen, SIGNAL(returnPressed()), this, SLOT(onEditReturnPressed()));
     connect(editBlue, SIGNAL(returnPressed()), this, SLOT(onEditReturnPressed()));
-    
-    // 安装事件过滤器，用于处理ESC键事件
+
+    // 安装事件过滤器拦截 ESC，防止误关对话框丢失未保存调整
     installEventFilter(this);
 }
 
@@ -368,8 +351,8 @@ void CameraDlg::onSliderBlackLevelChanged(int value)
     slideBlackLevel = value;
     blackLevel = value / 1000.0;
     editBlackLevel->setText(QString::number(blackLevel, 'f', 3));
-    
-    // 更新相机参数
+
+    // 滑块整数放大 1000 倍，直接下发相机并同步输入框显示
     if (_pCamera) {
         _pCamera->SetBlackLevel(value);
     }
@@ -380,8 +363,7 @@ void CameraDlg::onSliderGainChanged(int value)
     slideGain = value;
     gain = value / 1000.0;
     editGain->setText(QString::number(gain, 'f', 3));
-    
-    // 更新相机参数
+
     if (_pCamera) {
         _pCamera->SetGain(value);
     }
@@ -392,8 +374,7 @@ void CameraDlg::onSliderGammaChanged(int value)
     slideGamma = value;
     gamma = value / 1000.0;
     editGamma->setText(QString::number(gamma, 'f', 3));
-    
-    // 更新相机参数
+
     if (_pCamera) {
         _pCamera->SetGamma(value);
     }
@@ -404,8 +385,8 @@ void CameraDlg::onSliderShutterChanged(int value)
     slideShutter = value;
     shutter = value;
     editShutter->setText(QString::number(shutter));
-    
-    // 更新相机参数
+
+    // 快门为整型曝光时间，无需放大换算
     if (_pCamera) {
         _pCamera->SetShutter(value);
     }
@@ -416,8 +397,7 @@ void CameraDlg::onSliderRedChanged(int value)
     slideRed = value;
     red = value / 1000.0;
     editRed->setText(QString::number(red, 'f', 3));
-    
-    // 更新相机参数
+
     if (_pCamera) {
         _pCamera->SetRed(value);
     }
@@ -428,8 +408,7 @@ void CameraDlg::onSliderGreenChanged(int value)
     slideGreen = value;
     green = value / 1000.0;
     editGreen->setText(QString::number(green, 'f', 3));
-    
-    // 更新相机参数
+
     if (_pCamera) {
         _pCamera->SetGreen(value);
     }
@@ -440,8 +419,7 @@ void CameraDlg::onSliderBlueChanged(int value)
     slideBlue = value;
     blue = value / 1000.0;
     editBlue->setText(QString::number(blue, 'f', 3));
-    
-    // 更新相机参数
+
     if (_pCamera) {
         _pCamera->SetBlue(value);
     }
@@ -449,29 +427,28 @@ void CameraDlg::onSliderBlueChanged(int value)
 
 void CameraDlg::onSaveCamera()
 {
-    // 先从输入框读取值并更新相机参数
+    // 以输入框为准回读所有参数，浮点值乘 1000 转回滑块整数
     blackLevel = editBlackLevel->text().toDouble();
     slideBlackLevel = (int)(blackLevel * 1000);
-    
+
     gain = editGain->text().toDouble();
     slideGain = (int)(gain * 1000);
-    
+
     gamma = editGamma->text().toDouble();
     slideGamma = (int)(gamma * 1000);
-    
+
     shutter = editShutter->text().toInt();
     slideShutter = shutter;
-    
+
     red = editRed->text().toDouble();
     slideRed = (int)(red * 1000);
-    
+
     green = editGreen->text().toDouble();
     slideGreen = (int)(green * 1000);
-    
+
     blue = editBlue->text().toDouble();
     slideBlue = (int)(blue * 1000);
-    
-    // 更新相机参数
+
     if (_pCamera) {
         _pCamera->SetBlackLevel(slideBlackLevel);
         _pCamera->SetGain(slideGain);
@@ -480,8 +457,8 @@ void CameraDlg::onSaveCamera()
         _pCamera->SetRed(slideRed);
         _pCamera->SetGreen(slideGreen);
         _pCamera->SetBlue(slideBlue);
-        
-        // 保存摄像头参数到文件
+
+        // 下发后写入配置文件，保证下次上电沿用本次调整
         _pCamera->WriteConfig();
         QMessageBox::information(this, "保存成功", "摄像头参数已保存！");
     } else {
@@ -491,36 +468,35 @@ void CameraDlg::onSaveCamera()
 
 void CameraDlg::onEditReturnPressed()
 {
-    // 从编辑框读取值并更新滑块
+    // 任一输入框回车都会回读全部参数并回写滑块，setValue 会触发对应滑块槽完成相机下发
     blackLevel = editBlackLevel->text().toDouble();
     slideBlackLevel = (int)(blackLevel * 1000);
     sliderBlackLevel->setValue(slideBlackLevel);
-    
+
     gain = editGain->text().toDouble();
     slideGain = (int)(gain * 1000);
     sliderGain->setValue(slideGain);
-    
+
     gamma = editGamma->text().toDouble();
     slideGamma = (int)(gamma * 1000);
     sliderGamma->setValue(slideGamma);
-    
+
     shutter = editShutter->text().toInt();
     slideShutter = shutter;
     sliderShutter->setValue(slideShutter);
-    
+
     red = editRed->text().toDouble();
     slideRed = (int)(red * 1000);
     sliderRed->setValue(slideRed);
-    
+
     green = editGreen->text().toDouble();
     slideGreen = (int)(green * 1000);
     sliderGreen->setValue(slideGreen);
-    
+
     blue = editBlue->text().toDouble();
     slideBlue = (int)(blue * 1000);
     sliderBlue->setValue(slideBlue);
-    
-    // 更新相机参数
+
     if (_pCamera) {
         _pCamera->SetBlackLevel(slideBlackLevel);
         _pCamera->SetGain(slideGain);
@@ -534,13 +510,13 @@ void CameraDlg::onEditReturnPressed()
 
 bool CameraDlg::eventFilter(QObject *obj, QEvent *event)
 {
-    // 处理ESC键事件，禁止通过ESC键关闭对话框
     if (event->type() == QEvent::KeyPress)
     {
         QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
         if (keyEvent->key() == Qt::Key_Escape)
         {
-            return true; // 拦截ESC键事件
+            // 吞掉 ESC，避免误关对话框导致未保存的调整丢失
+            return true;
         }
     }
     return QWidget::eventFilter(obj, event);
