@@ -30,7 +30,7 @@ Color：HSI 颜色标定，对 5 个颜色对象分别标定 H/S/I 阈值。
 
 competition：比赛控制面板。
 
-![image-20260930014046782](C:\Users\30845\AppData\Roaming\Typora\typora-user-images\image-20260930014046782.png)
+![程序主界面](./Assets/001.png)
 
 ​													*图1 程序主界面*
 
@@ -60,19 +60,19 @@ competition：比赛控制面板。
 
 在相机显示区实时显示识别结果：基于已标定的颜色阈值与场地映射，识别己方与对方机器人、足球的位置，在画面上以色块标注，并在比赛态/预备态下叠加绘制机器人外形（黄色描边为我方、品红描边为对方）、足球（橙色圆点）及场地背景。显示区左上角实时显示帧率（FPS）。
 
-![image-20260930014057745](C:\Users\30845\AppData\Roaming\Typora\typora-user-images\image-20260930014057745.png)
+![场地标定与俯视预览](./Assets/002.png)
 
 ​												*图2 场地标定与俯视预览*
 
-![image-20260930014114165](C:\Users\30845\AppData\Roaming\Typora\typora-user-images\image-20260930014114165.png)
+![采色过程](./Assets/003.png)
 
 ​												*图3 采色过程*
 
-![image-20260930014143184](C:\Users\30845\AppData\Roaming\Typora\typora-user-images\image-20260930014143184.png)
+![采色识别结果](./Assets/004.png)
 
 ​												*图4 采色识别结果*
 
-![image-20260930014210715](C:\Users\30845\AppData\Roaming\Typora\typora-user-images\image-20260930014210715.png)
+![实时识别结果](./Assets/005.png)
 
 ​												*图5 实时识别结果*
 
